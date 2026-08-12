@@ -703,18 +703,18 @@ export class LiveDispatchService {
       let resolvedCustomerId: string | undefined = undefined;
       if (isSupabaseConfigured && supabase && isUUID(orderId)) {
         try {
-          const { data: tMatch } = await supabase.from('tasks').select('customer_id, user_id, order_id').eq('id', orderId).maybeSingle();
+          const { data: tMatch } = await supabase.from('tasks').select('customer_id, order_id').eq('id', orderId).maybeSingle();
           if (tMatch) {
-            resolvedCustomerId = tMatch.customer_id || tMatch.user_id;
+            resolvedCustomerId = tMatch.customer_id;
             if (!resolvedCustomerId && tMatch.order_id && isUUID(tMatch.order_id)) {
               console.log('[OrderFetch] orders.id being queried:', tMatch.order_id);
               const { data: ord } = await supabase.from('orders').select('*').eq('id', tMatch.order_id).maybeSingle();
-              if (ord) resolvedCustomerId = ord.customer_id || ord.user_id || ord.partner_id;
+              if (ord) resolvedCustomerId = ord.customer_id || ord.partner_id;
             }
           } else {
             console.log('[OrderFetch] orders.id being queried:', orderId);
             const { data: ord } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
-            if (ord) resolvedCustomerId = ord.customer_id || ord.user_id || ord.partner_id;
+            if (ord) resolvedCustomerId = ord.customer_id || ord.partner_id;
           }
         } catch (e) {}
       }

@@ -464,25 +464,33 @@ export class DispatchEngine {
       }
 
       // 3. Emit Domain Event
-      let realCustomerId = assignRes.data?.customer_id || (assignRes.data as any)?.user_id || '';
+      let realCustomerId = assignRes.data?.customer_id || '';
       if (!realCustomerId && isSupabaseConfigured && supabase) {
         try {
           const { data: tData } = await supabase
             .from('tasks')
-            .select('customer_id, user_id, order_id')
+            .select('customer_id, order_id')
             .eq('id', taskId)
             .maybeSingle();
           if (tData) {
-            realCustomerId = tData.customer_id || tData.user_id || '';
+            realCustomerId = tData.customer_id || '';
             if (!realCustomerId && tData.order_id && isUUID(tData.order_id)) {
               console.log('[OrderFetch] orders.id being queried:', tData.order_id);
               const { data: oData } = await supabase
                 .from('orders')
-                .select('customer_id, user_id')
+                .select('customer_id')
                 .eq('id', tData.order_id)
                 .maybeSingle();
-              if (oData) realCustomerId = oData.customer_id || oData.user_id || '';
+              if (oData) realCustomerId = oData.customer_id || '';
             }
+          } else if (isUUID(taskId)) {
+            console.log('[OrderFetch] orders.id being queried:', taskId);
+            const { data: oData } = await supabase
+              .from('orders')
+              .select('customer_id')
+              .eq('id', taskId)
+              .maybeSingle();
+            if (oData) realCustomerId = oData.customer_id || '';
           }
         } catch (err) {
           console.warn('[DispatchEngine] Failed to resolve task customer_id:', err);
