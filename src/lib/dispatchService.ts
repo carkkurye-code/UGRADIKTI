@@ -1,4 +1,4 @@
-import { supabase, getActiveSupabaseClient, isSupabaseConfigured, getStored, setStored, LOCAL_STORAGE_KEYS, Order, Assistant, db, isUUID, toUUID, getExactTableColumns, filterPayloadByValidColumns } from './supabase';
+import { supabase, getActiveSupabaseClient, isSupabaseConfigured, getStored, setStored, LOCAL_STORAGE_KEYS, Order, Assistant, db, isUUID, toUUID, getExactTableColumns, filterPayloadByValidColumns, filterTaskPayload, filterOrderPayload } from './supabase';
 import { eventBus } from './eventBus';
 import { createDomainEvent } from './domainEvents';
 import { NotificationService } from '@/services/notificationService';
@@ -140,7 +140,6 @@ export class LiveDispatchService {
             latitude: input.latitude,
             longitude: input.longitude,
             accuracy: input.accuracy,
-            location_url: input.latitude != null && input.longitude != null ? `https://www.google.com/maps/search/?api=1&query=${input.latitude},${input.longitude}` : undefined,
             payment_type: 'kapida_nakit',
             total_price: offerPrice,
             customer_price: offerPrice,
@@ -168,8 +167,12 @@ export class LiveDispatchService {
             ]
           });
           console.log("AFTER createOrder (createOrderAndDispatch)");
-        } catch (dbErr) {
-          console.warn('[LiveDispatch] Supabase insert warning, using local fallback:', dbErr);
+        } catch (dbErr: any) {
+          console.error('[LiveDispatch] Supabase order insert failed:', dbErr);
+          return {
+            success: false,
+            error: dbErr.message || 'Sipariş oluşturulamadı. Lütfen tekrar deneyin.'
+          };
         }
       }
 
@@ -634,24 +637,37 @@ export class LiveDispatchService {
             const validAssistantId = isUUID(assistantId) ? assistantId : toUUID(assistantId);
             const nowIso = new Date().toISOString();
 
-            // Update orders table with exact column filtering
-            const orderCols = await getExactTableColumns('orders');
-            const rawOrderPayload: Record<string, any> = {
-              assistant_id: validAssistantId,
-              status: 'accepted',
-              accepted_at: nowIso,
-              updated_at: nowIso
-            };
-            const orderPayload = filterPayloadByValidColumns(rawOrderPayload, orderCols);
+            // Update tasks/orders tables with exact column filtering
+            const { data: tMatch } = await client.from('tasks').select('id, order_id').eq('id', orderId).maybeSingle();
+            if (tMatch) {
+              const taskPayload = filterTaskPayload({
+                assistant_id: validAssistantId,
+                status: 'accepted',
+                accepted_at: nowIso,
+                updated_at: nowIso
+              });
+              await client.from('tasks').update(taskPayload).eq('id', orderId);
+              if (tMatch.order_id && isUUID(tMatch.order_id)) {
+                const orderPayload = filterOrderPayload({
+                  assistant_id: validAssistantId,
+                  status: 'accepted'
+                });
+                await client.from('orders').update(orderPayload).eq('id', tMatch.order_id);
+              }
+            } else {
+              const orderPayload = filterOrderPayload({
+                assistant_id: validAssistantId,
+                status: 'accepted'
+              });
+              if (Object.keys(orderPayload).length > 0) {
+                const { error: orderErr } = await client
+                  .from('orders')
+                  .update(orderPayload)
+                  .eq('id', orderId);
 
-            if (Object.keys(orderPayload).length > 0) {
-              const { error: orderErr } = await client
-                .from('orders')
-                .update(orderPayload)
-                .eq('id', orderId);
-
-              if (orderErr) {
-                console.warn('[LiveDispatch] Supabase orders update notice:', orderErr);
+                if (orderErr) {
+                  console.warn('[LiveDispatch] Supabase orders update notice:', orderErr);
+                }
               }
             }
 

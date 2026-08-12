@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { supabase, getActiveSupabaseClient, isSupabaseConfigured, db, Order, isUUID } from '@/lib/supabase';
+import { supabase, getActiveSupabaseClient, isSupabaseConfigured, db, Order, isUUID, filterTaskPayload, filterOrderPayload } from '@/lib/supabase';
 import { resolveTaskFields } from '@/pages/AsistanPage';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -92,23 +92,17 @@ export function TaskDetailPage() {
         const client = await getActiveSupabaseClient();
         const { data: tData } = await client.from('tasks').select('id, order_id').eq('id', order.id).maybeSingle();
         if (tData) {
-          await client.from('tasks').update({
-            delivery_code_verified: true,
-            delivery_code_verified_at: nowIso,
-          }).eq('id', order.id);
+          const taskPayload = filterTaskPayload({ updated_at: nowIso });
+          if (Object.keys(taskPayload).length > 0) {
+            await client.from('tasks').update(taskPayload).eq('id', order.id);
+          }
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await client.from('orders').update({
-              delivery_code_verified: true,
-              delivery_code_verified_at: nowIso,
-            }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ delivery_code_verified: true });
+            await client.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', order.id);
-          await client.from('orders').update({
-            delivery_code_verified: true,
-            delivery_code_verified_at: nowIso,
-          }).eq('id', order.id);
+          const orderPayload = filterOrderPayload({ delivery_code_verified: true });
+          await client.from('orders').update(orderPayload).eq('id', order.id);
         }
       }
 
@@ -155,17 +149,15 @@ export function TaskDetailPage() {
         const client = await getActiveSupabaseClient();
         const { data: tData } = await client.from('tasks').select('id, order_id').eq('id', order.id).maybeSingle();
         if (tData) {
-          await client.from('tasks').update({ status: 'teslim_edildi', delivered_at: nowIso }).eq('id', order.id);
+          const taskPayload = filterTaskPayload({ status: 'teslim_edildi', completed_at: nowIso });
+          await client.from('tasks').update(taskPayload).eq('id', order.id);
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await client.from('orders').update({ status: 'teslim_edildi', delivered_at: nowIso }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ status: 'teslim_edildi', delivered_at: nowIso });
+            await client.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', order.id);
-          await client.from('orders').update({
-            status: 'teslim_edildi',
-            delivered_at: nowIso
-          }).eq('id', order.id);
+          const orderPayload = filterOrderPayload({ status: 'teslim_edildi', delivered_at: nowIso });
+          await client.from('orders').update(orderPayload).eq('id', order.id);
         }
       } else {
         await db.updateOrderStatus(order.id, 'teslim_edildi');
@@ -199,25 +191,21 @@ export function TaskDetailPage() {
       if (isSupabaseConfigured && isUUID(order.id)) {
         const client = await getActiveSupabaseClient();
         const { data: tData } = await client.from('tasks').select('id, order_id').eq('id', order.id).maybeSingle();
+        const nowIso = new Date().toISOString();
         if (tData) {
-          await client.from('tasks').update({ status: 'cancelled', cancel_reason: reasonText }).eq('id', order.id);
+          const taskPayload = filterTaskPayload({ status: 'cancelled', cancelled_at: nowIso });
+          await client.from('tasks').update(taskPayload).eq('id', order.id);
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await client.from('orders').update({ status: 'cancelled', cancel_reason: reasonText }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ status: 'cancelled', cancel_reason: reasonText });
+            await client.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', order.id);
-          const res1 = await client.from('orders').update({
-            status: 'cancelled',
-            cancel_reason: reasonText,
-          }).eq('id', order.id);
+          const orderPayload = filterOrderPayload({ status: 'cancelled', cancel_reason: reasonText });
+          const res1 = await client.from('orders').update(orderPayload).eq('id', order.id);
 
           if (res1.error) {
-            console.log('[OrderFetch] orders.id being queried:', order.id);
-            await client.from('orders').update({
-              status: 'iptal',
-              cancel_reason: reasonText,
-            }).eq('id', order.id);
+            console.error('Error cancelling order in TaskDetailPage:', res1.error);
+            throw new Error(res1.error.message);
           }
         }
       }

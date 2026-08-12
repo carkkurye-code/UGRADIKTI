@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { User as SupabaseUser } from '@supabase/supabase-js';
-import { supabase, supabaseAssistant, isSupabaseConfigured, db, Assistant, Order, Partner, isUUID, toUUID, getExactTableColumns, filterPayloadByValidColumns } from '@/lib/supabase';
+import { supabase, supabaseAssistant, isSupabaseConfigured, db, Assistant, Order, Partner, isUUID, toUUID, getExactTableColumns, filterPayloadByValidColumns, filterTaskPayload, filterOrderPayload } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { playNotificationSound, showBrowserNotification } from '@/lib/soundUtils';
 import { LiveDispatchService } from '@/lib/dispatchService';
@@ -1747,19 +1747,17 @@ export function AsistanPage() {
         const activeClient = await getAuthenticatedClient();
         const { data: tData } = await activeClient.from('tasks').select('id, order_id').eq('id', orderId).maybeSingle();
         if (tData) {
-          await activeClient.from('tasks').update({ status: 'dogrulandi', verified_at: nowIso }).eq('id', orderId);
+          const taskPayload = filterTaskPayload({ status: 'dogrulandi', updated_at: nowIso });
+          await activeClient.from('tasks').update(taskPayload).eq('id', orderId);
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await activeClient.from('orders').update({ status: 'dogrulandi', verified_at: nowIso }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ status: 'dogrulandi', verified_at: nowIso });
+            await activeClient.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', orderId);
+          const orderPayload = filterOrderPayload({ status: 'dogrulandi', verified_at: nowIso });
           const { error: ordersErr } = await activeClient
             .from('orders')
-            .update({
-              status: 'dogrulandi',
-              verified_at: nowIso
-            })
+            .update(orderPayload)
             .eq('id', orderId);
 
           if (ordersErr) {
@@ -1792,39 +1790,22 @@ export function AsistanPage() {
         const activeClient = await getAuthenticatedClient();
         const { data: tData } = await activeClient.from('tasks').select('id, order_id').eq('id', orderId).maybeSingle();
         if (tData) {
-          await activeClient.from('tasks').update({ status: 'cancelled', cancel_reason: reason }).eq('id', orderId);
+          const taskPayload = filterTaskPayload({ status: 'cancelled', cancelled_at: nowIso });
+          await activeClient.from('tasks').update(taskPayload).eq('id', orderId);
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await activeClient.from('orders').update({ status: 'cancelled', cancel_reason: reason }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ status: 'cancelled', cancel_reason: reason });
+            await activeClient.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', orderId);
-          let updateOrderErr = null;
+          const orderPayload = filterOrderPayload({ status: 'cancelled', cancel_reason: reason });
           const res1 = await activeClient
             .from('orders')
-            .update({
-              status: 'cancelled',
-              cancel_reason: reason
-            })
+            .update(orderPayload)
             .eq('id', orderId);
 
           if (res1.error) {
-            console.log('[OrderFetch] orders.id being queried:', orderId);
-            const res2 = await activeClient
-              .from('orders')
-              .update({
-                status: 'iptal',
-                cancel_reason: reason
-              })
-              .eq('id', orderId);
-            updateOrderErr = res2.error;
-          } else {
-            updateOrderErr = null;
-          }
-
-          if (updateOrderErr) {
-            console.error('Error updating orders table for cancel:', updateOrderErr);
-            throw new Error(updateOrderErr.message || 'Sipariş iptal edilirken veritabanı hatası oluştu.');
+            console.error('Error updating orders table for cancel:', res1.error);
+            throw new Error(res1.error.message || 'Sipariş iptal edilirken veritabanı hatası oluştu.');
           }
         }
       }
@@ -1938,17 +1919,15 @@ export function AsistanPage() {
         const activeClient = await getAuthenticatedClient();
         const { data: tData } = await activeClient.from('tasks').select('id, order_id').eq('id', orderId).maybeSingle();
         if (tData) {
-          await activeClient.from('tasks').update({ status: 'yolda', picked_up_at: nowIso }).eq('id', orderId);
+          const taskPayload = filterTaskPayload({ status: 'yolda', updated_at: nowIso });
+          await activeClient.from('tasks').update(taskPayload).eq('id', orderId);
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await activeClient.from('orders').update({ status: 'yolda', picked_up_at: nowIso }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ status: 'yolda' });
+            await activeClient.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', orderId);
-          await activeClient.from('orders').update({
-            status: 'yolda',
-            picked_up_at: nowIso
-          }).eq('id', orderId);
+          const orderPayload = filterOrderPayload({ status: 'yolda' });
+          await activeClient.from('orders').update(orderPayload).eq('id', orderId);
         }
       }
 
@@ -1990,17 +1969,17 @@ export function AsistanPage() {
         const activeClient = await getAuthenticatedClient();
         const { data: tData } = await activeClient.from('tasks').select('id, order_id').eq('id', targetId).maybeSingle();
         if (tData) {
-          await activeClient.from('tasks').update({ delivery_code_verified: true, delivery_code_verified_at: nowIso }).eq('id', targetId);
+          const taskPayload = filterTaskPayload({ updated_at: nowIso });
+          if (Object.keys(taskPayload).length > 0) {
+            await activeClient.from('tasks').update(taskPayload).eq('id', targetId);
+          }
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await activeClient.from('orders').update({ delivery_code_verified: true, delivery_code_verified_at: nowIso }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ delivery_code_verified: true });
+            await activeClient.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', targetId);
-          await activeClient.from('orders').update({
-            delivery_code_verified: true,
-            delivery_code_verified_at: nowIso
-          }).eq('id', targetId);
+          const orderPayload = filterOrderPayload({ delivery_code_verified: true });
+          await activeClient.from('orders').update(orderPayload).eq('id', targetId);
         }
       }
 
@@ -2024,17 +2003,15 @@ export function AsistanPage() {
         const activeClient = await getAuthenticatedClient();
         const { data: tData } = await activeClient.from('tasks').select('id, order_id').eq('id', orderId).maybeSingle();
         if (tData) {
-          await activeClient.from('tasks').update({ status: 'teslim_edildi', delivered_at: nowIso }).eq('id', orderId);
+          const taskPayload = filterTaskPayload({ status: 'teslim_edildi', completed_at: nowIso });
+          await activeClient.from('tasks').update(taskPayload).eq('id', orderId);
           if (tData.order_id && isUUID(tData.order_id)) {
-            console.log('[OrderFetch] orders.id being queried:', tData.order_id);
-            await activeClient.from('orders').update({ status: 'teslim_edildi', delivered_at: nowIso }).eq('id', tData.order_id);
+            const orderPayload = filterOrderPayload({ status: 'teslim_edildi', delivered_at: nowIso });
+            await activeClient.from('orders').update(orderPayload).eq('id', tData.order_id);
           }
         } else {
-          console.log('[OrderFetch] orders.id being queried:', orderId);
-          await activeClient.from('orders').update({
-            status: 'teslim_edildi',
-            delivered_at: nowIso
-          }).eq('id', orderId);
+          const orderPayload = filterOrderPayload({ status: 'teslim_edildi', delivered_at: nowIso });
+          await activeClient.from('orders').update(orderPayload).eq('id', orderId);
         }
       }
 

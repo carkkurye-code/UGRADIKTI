@@ -1067,37 +1067,39 @@ export async function getExactTableColumns(tableName: string): Promise<string[]>
 
     // 3. Complete candidate column mappings as final fallback
     const fallbackCandidateMap: Record<string, string[]> = {
-      partners: ['id', 'business_name', 'slug', 'email', 'phone', 'category', 'description', 'logo', 'address', 'status', 'active', 'created_at'],
-      profiles: ['id', 'partner_id', 'role', 'is_admin', 'phone', 'avatar_url', 'full_name', 'address', 'created_at', 'updated_at'],
+      partners: ['id', 'user_id', 'status', 'business_name', 'slug', 'email', 'phone', 'category', 'description', 'logo', 'address', 'active', 'created_at'],
+      profiles: ['id', 'partner_id', 'assistant_id', 'full_name', 'email', 'phone', 'is_admin', 'avatar_url', 'role', 'created_at', 'updated_at'],
       products: ['id', 'partner_id', 'name', 'title', 'description', 'price', 'image', 'category', 'active', 'created_at'],
       tasks: [
-        'id', 'customer_id', 'partner_id', 'assistant_id', 'status',
+        'id', 'order_id', 'customer_id', 'partner_id', 'assistant_id', 'status',
         'task_description', 'pickup_address', 'delivery_address', 'pickup_lat', 'pickup_lng',
-        'delivery_lat', 'delivery_lng', 'total_price', 'verification_code',
-        'created_at', 'updated_at', 'service_type', 'distance_km', 'estimated_minutes',
-        'courier_net', 'base_price', 'fuel_cost', 'wear_cost', 'operation_cost',
-        'tax_cost', 'vat_cost', 'commission', 'customer_price'
+        'delivery_lat', 'delivery_lng', 'total_price', 'customer_price', 'courier_net',
+        'base_price', 'fuel_cost', 'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost',
+        'commission', 'service_type', 'distance_km', 'estimated_minutes',
+        'created_at', 'updated_at', 'accepted_at', 'completed_at', 'cancelled_at', 'verification_code'
       ],
       orders: [
-        'id', 'partner_id', 'store_id', 'customer_id', 'user_id', 'assistant_id',
-        'customer_name', 'customer_phone', 'customer_address', 'delivery_address',
+        'id', 'customer_id', 'partner_id', 'assistant_id', 'store_id', 'status',
         'payment_type', 'total_price', 'customer_price', 'courier_net', 'base_price',
-        'items', 'notes', 'status', 'service_type', 'distance_km', 'estimated_minutes',
-        'pickup_lat', 'pickup_lng', 'delivery_lat', 'delivery_lng',
-        'city', 'province', 'postal_code', 'place_id', 'location_url',
-        'created_at', 'updated_at', 'accepted_at', 'completed_at', 'delivery_code'
+        'fuel_cost', 'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost', 'commission',
+        'service_type', 'distance_km', 'estimated_minutes', 'pickup_address', 'delivery_address',
+        'pickup_lat', 'pickup_lng', 'delivery_lat', 'delivery_lng', 'city', 'province',
+        'postal_code', 'place_id', 'items', 'notes', 'delivery_code', 'delivery_code_verified',
+        'delivery_code_verified_at', 'picked_up_at', 'cancel_reason', 'verified_at',
+        'delivered_at', 'created_at', 'customer_name', 'customer_phone', 'customer_address'
       ],
-      assistants: ['id', 'user_id', 'full_name', 'phone', 'vehicle_type', 'status', 'rating', 'active', 'balance', 'created_at', 'updated_at'],
-      assistant_subscriptions: ['id', 'assistant_id', 'start_date', 'expires_at', 'monthly_price', 'payment_status', 'status', 'created_at'],
-      wallets: ['id', 'profile_id', 'available_balance', 'reserved_balance', 'currency', 'status', 'created_at', 'updated_at'],
-      wallet_transactions: ['id', 'wallet_id', 'amount', 'transaction_type', 'description', 'status', 'created_at'],
+      assistants: ['id', 'user_id', 'status', 'full_name', 'email', 'phone', 'created_at', 'updated_at', 'notes', 'vehicle_type'],
+      assistant_subscriptions: ['id', 'assistant_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'monthly_price', 'payment_status'],
+      wallets: ['id', 'user_id', 'profile_id', 'created_at', 'updated_at', 'balance'],
+      wallet_transactions: ['id', 'task_id', 'description', 'created_at'],
+      notifications: ['id', 'user_id', 'title', 'created_at'],
       dispatch_offers: [
-        'id', 'dispatch_session_id', 'order_id', 'task_id', 'assistant_id', 'status',
-        'courier_net', 'customer_price', 'offered_at', 'expires_at',
-        'distance_km', 'estimated_minutes', 'service_type', 'wave_index', 'created_at', 'updated_at'
+        'id', 'order_id', 'task_id', 'assistant_id', 'dispatch_session_id', 'status',
+        'customer_price', 'courier_net', 'service_type', 'distance_km', 'estimated_minutes',
+        'expires_at', 'offered_at'
       ],
       dispatch_sessions: [
-        'id', 'order_id', 'task_id', 'status', 'current_index', 'strategy', 'created_at', 'updated_at'
+        'id', 'order_id', 'task_id', 'status', 'created_at', 'updated_at', 'expires_at', 'strategy'
       ]
     };
 
@@ -1128,6 +1130,48 @@ export function filterPayloadByValidColumns<T extends Record<string, any>>(paylo
     }
   }
   return filtered;
+}
+
+export const VALID_TASK_COLUMNS = new Set([
+  'id', 'order_id', 'customer_id', 'partner_id', 'assistant_id', 'status',
+  'task_description', 'pickup_address', 'delivery_address', 'pickup_lat', 'pickup_lng',
+  'delivery_lat', 'delivery_lng', 'total_price', 'customer_price', 'courier_net',
+  'base_price', 'fuel_cost', 'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost',
+  'commission', 'service_type', 'distance_km', 'estimated_minutes',
+  'created_at', 'updated_at', 'accepted_at', 'completed_at', 'cancelled_at', 'verification_code'
+]);
+
+export const VALID_ORDER_COLUMNS = new Set([
+  'id', 'customer_id', 'partner_id', 'assistant_id', 'store_id', 'status',
+  'payment_type', 'total_price', 'customer_price', 'courier_net', 'base_price',
+  'fuel_cost', 'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost', 'commission',
+  'service_type', 'distance_km', 'estimated_minutes', 'pickup_address', 'delivery_address',
+  'pickup_lat', 'pickup_lng', 'delivery_lat', 'delivery_lng', 'city', 'province',
+  'postal_code', 'place_id', 'items', 'notes', 'delivery_code', 'delivery_code_verified',
+  'delivery_code_verified_at', 'picked_up_at', 'cancel_reason', 'verified_at',
+  'delivered_at', 'created_at', 'customer_name', 'customer_phone', 'customer_address'
+]);
+
+export function filterTaskPayload(payload: Record<string, any>): Record<string, any> {
+  const res: Record<string, any> = {};
+  if (!payload || typeof payload !== 'object') return res;
+  for (const k in payload) {
+    if (VALID_TASK_COLUMNS.has(k) && payload[k] !== undefined) {
+      res[k] = payload[k];
+    }
+  }
+  return res;
+}
+
+export function filterOrderPayload(payload: Record<string, any>): Record<string, any> {
+  const res: Record<string, any> = {};
+  if (!payload || typeof payload !== 'object') return res;
+  for (const k in payload) {
+    if (VALID_ORDER_COLUMNS.has(k) && payload[k] !== undefined) {
+      res[k] = payload[k];
+    }
+  }
+  return res;
 }
 
 let cachedProductsTableColumns: Set<string> | null = null;
@@ -2701,11 +2745,12 @@ export const db = {
         payload.user_id = order.user_id;
       }
 
-      console.log('Sending dynamically filtered insert payload to Supabase "orders":', payload);
+      const filteredPayload = filterOrderPayload(payload);
+      console.log('Sending dynamically filtered insert payload to Supabase "orders":', filteredPayload);
 
       const { data, error } = await supabase
         .from('orders')
-        .insert(payload)
+        .insert(filteredPayload)
         .select()
         .single();
       

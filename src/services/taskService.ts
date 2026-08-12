@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured, isUUID, toUUID } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured, isUUID, toUUID, filterTaskPayload, filterOrderPayload } from '@/lib/supabase';
 import {
   Task,
   TaskStatus,
@@ -193,9 +193,19 @@ export class TaskService {
       try {
         const validTaskUuid = taskId;
         const validAssistantUuid = isUUID(assistantId) ? assistantId : toUUID(assistantId);
+        const nowIso = new Date().toISOString();
 
-        // Conditional update directly via orders table
-        const { data: existing } = await supabase.from('orders').select('*').eq('id', validTaskUuid).maybeSingle();
+        // Check tasks table first, then orders table
+        const { data: tData } = await supabase.from('tasks').select('*').eq('id', validTaskUuid).maybeSingle();
+        let existing = tData;
+        let isTasksTable = true;
+
+        if (!existing) {
+          const { data: oData } = await supabase.from('orders').select('*').eq('id', validTaskUuid).maybeSingle();
+          existing = oData;
+          isTasksTable = false;
+        }
+
         if (!existing) return { success: false, error: 'Görev bulunamadı.' };
 
         if (!isValidTaskTransition(existing.status, 'assigned')) {
@@ -206,20 +216,53 @@ export class TaskService {
           return { success: false, error: 'Bu göreve zaten başka bir asistan atanmış.' };
         }
 
-        const { data: updated, error: updateErr } = await supabase
-          .from('orders')
-          .update({
-            assistant_id: assistantId,
-            status: 'assigned',
-            accepted_at: new Date().toISOString(),
-          })
-          .eq('id', taskId)
-          .is('assistant_id', null) // Atomic constraint check
-          .select('*')
-          .single();
+        let updated: any = null;
 
-        if (updateErr || !updated) {
-          return { success: false, error: 'Görev kabul edilirken bir çakışma oluştu.' };
+        if (isTasksTable) {
+          const taskPayload = filterTaskPayload({
+            assistant_id: validAssistantUuid,
+            status: 'assigned',
+            accepted_at: nowIso,
+          });
+
+          const { data: uTask, error: uErr } = await supabase
+            .from('tasks')
+            .update(taskPayload)
+            .eq('id', validTaskUuid)
+            .is('assistant_id', null)
+            .select('*')
+            .single();
+
+          if (uErr || !uTask) {
+            return { success: false, error: 'Görev kabul edilirken bir çakışma oluştu.' };
+          }
+          updated = uTask;
+
+          if (existing.order_id && isUUID(existing.order_id)) {
+            const orderPayload = filterOrderPayload({
+              assistant_id: validAssistantUuid,
+              status: 'assigned',
+            });
+            await supabase.from('orders').update(orderPayload).eq('id', existing.order_id);
+          }
+        } else {
+          const orderPayload = filterOrderPayload({
+            assistant_id: validAssistantUuid,
+            status: 'assigned',
+          });
+
+          const { data: uOrder, error: uErr } = await supabase
+            .from('orders')
+            .update(orderPayload)
+            .eq('id', validTaskUuid)
+            .is('assistant_id', null)
+            .select('*')
+            .single();
+
+          if (uErr || !uOrder) {
+            return { success: false, error: 'Görev kabul edilirken bir çakışma oluştu.' };
+          }
+          updated = uOrder;
         }
 
         await this.logTaskEvent(taskId, assistantId, 'assistant', 'assigned', existing.status, 'assigned');
@@ -477,9 +520,10 @@ export class TaskService {
         let updatedTask: any = null;
 
         if (isTasksTable) {
+          const taskPayload = filterTaskPayload(updatePayload);
           const { data: uTask, error: uErr } = await supabase
             .from('tasks')
-            .update(updatePayload)
+            .update(taskPayload)
             .eq('id', taskId)
             .select('*')
             .maybeSingle();
@@ -490,15 +534,19 @@ export class TaskService {
           updatedTask = uTask || { ...currentTask, ...updatePayload };
 
           if (currentTask.order_id && isUUID(currentTask.order_id)) {
-            await supabase
-              .from('orders')
-              .update(updatePayload)
-              .eq('id', currentTask.order_id);
+            const orderPayload = filterOrderPayload(updatePayload);
+            if (Object.keys(orderPayload).length > 0) {
+              await supabase
+                .from('orders')
+                .update(orderPayload)
+                .eq('id', currentTask.order_id);
+            }
           }
         } else {
+          const orderPayload = filterOrderPayload(updatePayload);
           const { data: uOrder, error: uErr } = await supabase
             .from('orders')
-            .update(updatePayload)
+            .update(orderPayload)
             .eq('id', taskId)
             .select('*')
             .single();
