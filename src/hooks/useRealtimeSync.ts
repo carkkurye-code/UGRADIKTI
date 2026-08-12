@@ -17,12 +17,14 @@ interface ChannelState {
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   retryCount: number;
   isConnecting: boolean;
+  isCleaningUp: boolean;
+  status: 'DISCONNECTED' | 'CONNECTING' | 'SUBSCRIBED' | 'ERROR' | 'CLEANING';
 }
 
 /**
  * Resilient Production Realtime Synchronization Hook for UĞRA Platform
- * Listens to Supabase Realtime Postgres Changes on orders, wallets, notifications,
- * and ratings tables in separate channels with controlled reconnection and backoff.
+ * Listens to Supabase Realtime Postgres Changes on orders, wallets, and notifications
+ * in separate channels with idempotent cleanup and controlled reconnection.
  */
 export function useRealtimeSync(userId?: string): void {
   const channelStatesRef = useRef<Record<string, ChannelState>>({});
@@ -42,7 +44,7 @@ export function useRealtimeSync(userId?: string): void {
       return;
     }
 
-    console.log('[RealtimeSync] Initializing resilient Realtime channels for Orders, Wallets, Notifications, and Ratings...');
+    console.log('[RealtimeSync] Initializing resilient Realtime channels for Orders, Wallets, and Notifications...');
 
     // Handlers with safe error boundaries
     const handleOrderChange = (payload: any) => {
@@ -152,29 +154,6 @@ export function useRealtimeSync(userId?: string): void {
       }
     };
 
-    const handleRatingChange = (payload: any) => {
-      try {
-        if (!payload?.new) return;
-        const newRow = payload.new as any;
-        if (!newRow.id) return;
-
-        eventBus.publish(
-          createDomainEvent('RATING_CREATED', newRow.id, {
-            ratingId: newRow.id,
-            taskId: newRow.task_id,
-            reviewerProfileId: newRow.reviewer_profile_id,
-            targetProfileId: newRow.target_profile_id,
-            targetType: newRow.target_type,
-            score: newRow.score,
-            comment: newRow.comment,
-            tags: newRow.tags,
-          })
-        );
-      } catch (err) {
-        console.warn('[RealtimeSync] [ratings] Safe payload handler caught error:', err);
-      }
-    };
-
     const configs: TableChannelConfig[] = [
       {
         channelName: 'ugra-realtime-orders',
@@ -197,34 +176,38 @@ export function useRealtimeSync(userId?: string): void {
         staggerOffsetMs: 4000,
         handler: handleNotificationChange,
       },
-      {
-        channelName: 'ugra-realtime-ratings',
-        tableName: 'ratings',
-        eventFilter: 'INSERT',
-        staggerOffsetMs: 6000,
-        handler: handleRatingChange,
-      },
     ];
 
-    // Helper to safely clean up a channel instance
-    const cleanupChannel = (channelName: string) => {
+    // Idempotent helper to safely clean up a channel instance
+    const cleanupChannel = (channelName: string, tableName: string) => {
       const state = channelStatesRef.current[channelName];
       if (!state) return;
+
+      if (state.isCleaningUp) {
+        return;
+      }
+      state.isCleaningUp = true;
 
       if (state.reconnectTimer) {
         clearTimeout(state.reconnectTimer);
         state.reconnectTimer = null;
       }
 
-      if (state.channel) {
-        try {
-          if (supabase && typeof supabase.removeChannel === 'function') {
-            supabase.removeChannel(state.channel);
-          }
-        } catch {}
-        state.channel = null;
-      }
+      const existingChannel = state.channel;
+      state.channel = null;
       state.isConnecting = false;
+      state.status = 'DISCONNECTED';
+
+      if (existingChannel && supabase && typeof supabase.removeChannel === 'function') {
+        try {
+          console.log(`[RealtimeSync] cleanup: ${tableName}`);
+          supabase.removeChannel(existingChannel);
+        } catch (err) {
+          console.warn(`[RealtimeSync] [${tableName}] Error in removeChannel:`, err);
+        }
+      }
+
+      state.isCleaningUp = false;
     };
 
     // Helper to schedule a reconnection with backoff + stagger
@@ -233,43 +216,34 @@ export function useRealtimeSync(userId?: string): void {
 
       let state = channelStatesRef.current[config.channelName];
       if (!state) {
-        state = { channel: null, reconnectTimer: null, retryCount: 0, isConnecting: false };
+        state = { channel: null, reconnectTimer: null, retryCount: 0, isConnecting: false, isCleaningUp: false, status: 'DISCONNECTED' };
         channelStatesRef.current[config.channelName] = state;
       }
 
       if (state.reconnectTimer) {
-        clearTimeout(state.reconnectTimer);
-        state.reconnectTimer = null;
+        console.log(`[RealtimeSync] reconnect skipped: ${config.tableName} already scheduled`);
+        return;
       }
 
-      // Safely tear down existing dead channel
-      if (state.channel) {
-        try {
-          if (supabase && typeof supabase.removeChannel === 'function') {
-            supabase.removeChannel(state.channel);
-          }
-        } catch {}
-        state.channel = null;
-      }
+      // Tear down existing channel safely
+      cleanupChannel(config.channelName, config.tableName);
 
       state.retryCount += 1;
 
-      // Cap aggressive retries: 3 attempts with short backoff, then back off to 5 minutes
-      let delay: number;
-      if (state.retryCount <= 3) {
-        const baseDelay = Math.min(30000, 5000 * Math.pow(1.5, state.retryCount - 1));
-        const jitter = Math.random() * 1000;
-        delay = Math.round(baseDelay + config.staggerOffsetMs + jitter);
-        console.warn(`[RealtimeSync] [${config.tableName}] Realtime subscription temporarily disconnected (Attempt ${state.retryCount}/3). Reconnecting in ${(delay / 1000).toFixed(1)}s...`);
-      } else {
-        // Extended backoff: retry once every 5 minutes (300s) to avoid reconnect loop
-        delay = 300000;
-        if (state.retryCount === 4) {
-          console.warn(`[RealtimeSync] [${config.tableName}] Realtime subscription unavailable (Supabase Realtime publication may not be enabled for table '${config.tableName}'). Will retry quietly every 5 minutes.`);
-        }
+      if (state.retryCount > 3) {
+        console.warn(`[RealtimeSync] [${config.tableName}] Subscription unavailable after 3 attempts. Pausing auto-reconnect.`);
+        return;
       }
 
+      const baseDelay = Math.min(30000, 5000 * Math.pow(1.5, state.retryCount - 1));
+      const jitter = Math.random() * 1000;
+      const delay = Math.round(baseDelay + config.staggerOffsetMs + jitter);
+
+      console.log(`[RealtimeSync] reconnect scheduled: ${config.tableName} (attempt ${state.retryCount}/3) in ${(delay / 1000).toFixed(1)}s`);
+
       state.reconnectTimer = setTimeout(() => {
+        if (!state) return;
+        state.reconnectTimer = null;
         if (!isMounted) return;
         connectChannel(config);
       }, delay);
@@ -281,22 +255,21 @@ export function useRealtimeSync(userId?: string): void {
 
       let state = channelStatesRef.current[config.channelName];
       if (!state) {
-        state = { channel: null, reconnectTimer: null, retryCount: 0, isConnecting: false };
+        state = { channel: null, reconnectTimer: null, retryCount: 0, isConnecting: false, isCleaningUp: false, status: 'DISCONNECTED' };
         channelStatesRef.current[config.channelName] = state;
       }
 
-      if (state.isConnecting) return;
+      if (state.isConnecting || state.channel || state.isCleaningUp) {
+        console.log(`[RealtimeSync] reconnect skipped: ${config.tableName} already active`);
+        return;
+      }
+
       state.isConnecting = true;
+      state.status = 'CONNECTING';
+
+      console.log(`[RealtimeSync] subscribing: ${config.tableName}`);
 
       try {
-        // Remove old channel if present
-        if (state.channel) {
-          try {
-            supabase.removeChannel(state.channel);
-          } catch {}
-          state.channel = null;
-        }
-
         const ch = supabase
           .channel(config.channelName)
           .on(
@@ -307,25 +280,38 @@ export function useRealtimeSync(userId?: string): void {
           .subscribe((status: string, err?: any) => {
             if (!isMounted) return;
             const currentState = channelStatesRef.current[config.channelName];
-            if (currentState) {
-              currentState.isConnecting = false;
-            }
+            if (!currentState || currentState.isCleaningUp) return;
+
+            currentState.isConnecting = false;
 
             if (status === 'SUBSCRIBED') {
-              console.log(`[RealtimeSync] [${config.tableName}] Channel status: SUBSCRIBED`);
-              if (currentState) {
-                currentState.retryCount = 0;
-              }
+              console.log(`[RealtimeSync] subscribed: ${config.tableName}`);
+              currentState.status = 'SUBSCRIBED';
+              currentState.retryCount = 0;
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-              // Gracefully handle socket closures (e.g. 1006) without logging scary errors or throwing exceptions
-              scheduleReconnect(config);
+              currentState.status = 'ERROR';
+              console.warn(`[RealtimeSync] [${config.tableName}] Channel status change: ${status}`);
+              // Defer reconnect to next macrotask to prevent synchronous call stack recursion during removeChannel/unsubscribe
+              setTimeout(() => {
+                if (isMounted) {
+                  scheduleReconnect(config);
+                }
+              }, 0);
             }
           });
 
         state.channel = ch;
       } catch (e) {
-        if (state) state.isConnecting = false;
-        scheduleReconnect(config);
+        if (state) {
+          state.isConnecting = false;
+          state.status = 'ERROR';
+        }
+        console.warn(`[RealtimeSync] [${config.tableName}] Exception subscribing:`, e);
+        setTimeout(() => {
+          if (isMounted) {
+            scheduleReconnect(config);
+          }
+        }, 0);
       }
     };
 
@@ -337,7 +323,7 @@ export function useRealtimeSync(userId?: string): void {
     return () => {
       isMounted = false;
       configs.forEach(config => {
-        cleanupChannel(config.channelName);
+        cleanupChannel(config.channelName, config.tableName);
       });
     };
   }, [userId]);

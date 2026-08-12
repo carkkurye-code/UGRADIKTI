@@ -54,10 +54,12 @@ class EventBus {
           this.publishDepth = 0;
           try {
             await this.publish(event);
+          } catch (err) {
+            console.error(`[EventBus] Deferred publish error for event ${event.type}:`, err);
           } finally {
             this.publishDepth = savedDepth;
+            resolve();
           }
-          resolve();
         }, 0);
       });
     }
