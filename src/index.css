@@ -1,0 +1,154 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-hover: hsl(var(--primary-hover));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --font-sans: var(--app-font-sans);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: 240 6% 4.5%; /* #0B0B0C */
+  --foreground: 0 0% 84%; /* #D6D6D6 */
+  --card: 240 5% 7.5%; /* #121214 */
+  --card-foreground: 0 0% 100%;
+  --popover: 240 5% 7.5%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 0 0% 100%; /* #FFFFFF */
+  --primary-hover: 0 0% 90%;
+  --primary-foreground: 0 0% 0%; /* #000000 */
+  --secondary: 240 4% 19%; /* #2E2E34 */
+  --secondary-foreground: 0 0% 100%;
+  --muted: 240 5% 10%; /* #1A1A1E */
+  --muted-foreground: 240 3% 49%; /* #7A7A82 */
+  --accent: 240 5% 10%; /* #1A1A1E */
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 5% 15%; /* #242428 */
+  --input: 240 5% 9%; /* #161618 */
+  --ring: 240 5% 37%; /* #5A5A63 */
+  
+  --radius: 1rem;
+  --app-font-sans: 'Outfit', system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply overflow-x-hidden;
+    width: 100%;
+    min-height: 100%;
+    background-color: #0A0A0C;
+  }
+  body {
+    @apply text-foreground font-sans antialiased overflow-x-hidden selection:bg-white/20 selection:text-white;
+    width: 100%;
+    max-width: 100vw;
+    min-height: 100vh;
+    background-color: #0A0A0C;
+    position: relative;
+  }
+
+  /* Global Fixed Ambient Background - Hero section design language across entire website */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -999;
+    pointer-events: none;
+    background: 
+      radial-gradient(ellipse 110% 70% at 50% 15%, rgba(255, 255, 255, 0.055) 0%, rgba(255, 122, 0, 0.025) 40%, rgba(10, 10, 12, 0.85) 75%, rgba(6, 6, 8, 1) 100%),
+      radial-gradient(ellipse 90% 90% at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.65) 100%),
+      #0A0A0C;
+  }
+
+  .bg-background {
+    background-color: transparent !important;
+  }
+
+  /* Sleek scrollbar styling for tables, navigation and drawers */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] shadow-2xl;
+  }
+  .glass-card {
+    @apply bg-white/[0.02] hover:bg-white/[0.04] transition-colors duration-500 backdrop-blur-md border border-white/[0.05] shadow-[0_8px_32px_rgba(0,0,0,0.12)];
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe-header {
+    padding-top: calc(env(safe-area-inset-top) + 1.5rem);
+  }
+}
+
+/* Mobile Readability Enhancements */
+@media (max-width: 767px) {
+  :root {
+    --muted-foreground: 216 12% 69%;
+    --foreground: 0 0% 100%;
+  }
+}
+

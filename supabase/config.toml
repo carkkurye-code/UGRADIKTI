@@ -1,0 +1,4 @@
+project_id = "your-supabase-project-id"
+
+[functions.approve-assistant]
+verify_jwt = false

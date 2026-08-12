@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build Output
+dist/
+.vercel
+
+# Environment Files
+.env
+.env.local
+.env*.local
+
+# Logs and OS
+*.log
+.DS_Store
+coverage/

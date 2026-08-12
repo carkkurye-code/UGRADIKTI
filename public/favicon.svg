@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" width="100%" height="100%">
+  <!-- Left curve of U -->
+  <path d="M 145,140 L 195,140 L 195,280 C 195,325 225,365 250,385 C 190,385 145,340 145,280 Z" fill="#FFFFFF" />
+  <!-- Right curve of U -->
+  <path d="M 317,180 L 367,180 L 367,280 C 367,340 322,385 262,385 C 287,365 317,325 317,280 Z" fill="#FFFFFF" />
+  <!-- Orange Dot -->
+  <circle cx="342" cy="140" r="26" fill="#FF6B00" />
+</svg>

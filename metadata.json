@@ -1,0 +1,10 @@
+{
+  "name": "UĞRA — Şehir İçi Zaman Asistanınız",
+  "description": "Gitmeye vakit bulamadığın her yere senin için Uğra\u0027yalım. Şehir içi zaman asistanınız.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
