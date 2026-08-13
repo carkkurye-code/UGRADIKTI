@@ -197,7 +197,12 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  if (!taskDescription) {
+  if (taskDescription) {
+    taskDescription = taskDescription
+      .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+      .replace(/\n\s*\n\s*\n/g, '\n\n')
+      .trim();
+  } else {
     taskDescription = '';
   }
 
@@ -218,6 +223,22 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
       if (trimmed !== 'Müşteri') {
         customerName = trimmed;
         break;
+      }
+    }
+  }
+
+  if (!customerName) {
+    const textPool = [item.task_description, o.task_description, item.notes, o.notes, p.notes];
+    for (const text of textPool) {
+      if (typeof text === 'string' && text) {
+        const match = text.match(/Müşteri:\s*([^\(\n\r]+)/i);
+        if (match && match[1]?.trim()) {
+          const nameFound = match[1].trim();
+          if (nameFound && nameFound !== 'Müşteri') {
+            customerName = nameFound;
+            break;
+          }
+        }
       }
     }
   }
@@ -546,7 +567,15 @@ const TaskDescriptionCard = React.memo(function TaskDescriptionCard({ descriptio
     return null;
   }
 
-  const cleanDesc = description.trim();
+  const cleanDesc = description
+    .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+    .replace(/\n\s*\n\s*\n/g, '\n\n')
+    .trim();
+
+  if (!cleanDesc) {
+    return null;
+  }
+
   const isLong = cleanDesc.length > 110 || cleanDesc.split('\n').length > 4;
 
   return (
@@ -1089,7 +1118,14 @@ export function AsistanPage() {
           let mappedOrders: any[] = [];
           if (ordersRes.data) {
             mappedOrders = ordersRes.data.map((order: any) => {
-              let desc = order.task_description || order.notes || '';
+              let rawDesc = order.task_description || order.notes || '';
+              let extractedName = '';
+              const custMatch = rawDesc.match(/Müşteri:\s*([^\(\n\r]+)/i);
+              if (custMatch && custMatch[1]?.trim()) {
+                extractedName = custMatch[1].trim();
+              }
+
+              let desc = rawDesc;
               if (desc && desc.includes('[') && desc.includes(']')) {
                 desc = desc
                   .replace(/^\[.*?\]\s*/, '')
@@ -1097,22 +1133,32 @@ export function AsistanPage() {
                   .replace(/• Ne Zaman:[^\n\r]*/gi, '')
                   .trim();
               }
+              desc = desc
+                .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+                .replace(/\n\s*\n\s*\n/g, '\n\n')
+                .trim();
+
               let noteStr = order.notes || '';
               if (noteStr) {
                 noteStr = noteStr
                   .replace(/\[.*?\]/g, '')
                   .replace(/• Adres Detayı:[^\n\r]*/gi, '')
                   .replace(/• Ne Zaman:[^\n\r]*/gi, '')
+                  .replace(/Müşteri:\s*[^\n\r]*/gi, '')
                   .trim();
                 if (noteStr === desc) noteStr = '';
               }
+
+              const finalName = order.customer_name && order.customer_name !== 'Müşteri' && order.customer_name.trim() !== ''
+                ? order.customer_name.trim()
+                : (extractedName || 'Müşteri');
 
               return {
                 id: order.id,
                 order_id: order.id,
                 customer_id: order.customer_id || order.user_id || null,
                 user_id: order.user_id || order.customer_id || null,
-                customer_name: order.customer_name || 'Müşteri',
+                customer_name: finalName,
                 customer_phone: order.customer_phone || '',
                 customer_address: order.customer_address || order.delivery_address || 'Adres',
                 delivery_address: order.delivery_address || order.customer_address || 'Adres',
@@ -1161,7 +1207,14 @@ export function AsistanPage() {
           let mappedTasks: any[] = [];
           if (tasksRes.data) {
             mappedTasks = tasksRes.data.map((task: any) => {
-              let desc = task.task_description || task.description || task.title || task.notes || '';
+              let rawDesc = task.task_description || task.description || task.title || task.notes || '';
+              let extractedName = '';
+              const custMatch = rawDesc.match(/Müşteri:\s*([^\(\n\r]+)/i);
+              if (custMatch && custMatch[1]?.trim()) {
+                extractedName = custMatch[1].trim();
+              }
+
+              let desc = rawDesc;
               if (desc && desc.includes('[') && desc.includes(']')) {
                 desc = desc
                   .replace(/^\[.*?\]\s*/, '')
@@ -1169,15 +1222,25 @@ export function AsistanPage() {
                   .replace(/• Ne Zaman:[^\n\r]*/gi, '')
                   .trim();
               }
+              desc = desc
+                .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+                .replace(/\n\s*\n\s*\n/g, '\n\n')
+                .trim();
+
               let noteStr = task.notes || '';
               if (noteStr) {
                 noteStr = noteStr
                   .replace(/\[.*?\]/g, '')
                   .replace(/• Adres Detayı:[^\n\r]*/gi, '')
                   .replace(/• Ne Zaman:[^\n\r]*/gi, '')
+                  .replace(/Müşteri:\s*[^\n\r]*/gi, '')
                   .trim();
                 if (noteStr === desc) noteStr = '';
               }
+
+              const finalName = task.customer_name && task.customer_name !== 'Müşteri' && task.customer_name.trim() !== ''
+                ? task.customer_name.trim()
+                : (extractedName || 'Müşteri');
 
               return {
                 id: task.id,
@@ -1186,7 +1249,7 @@ export function AsistanPage() {
                 source: 'tasks',
                 customer_id: task.customer_id || task.user_id || null,
                 user_id: task.user_id || task.customer_id || null,
-                customer_name: task.customer_name || 'Müşteri',
+                customer_name: finalName,
                 customer_phone: task.customer_phone || '',
                 customer_address: task.customer_address || task.delivery_address || 'Adres',
                 delivery_address: task.delivery_address || task.customer_address || 'Adres',
@@ -2596,19 +2659,6 @@ export function AsistanPage() {
                               )}
                             </div>
                           )}
-
-                          {/* 7. Ödeme Tipi */}
-                          <div className="bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E5E7EB] flex items-center justify-between text-xs">
-                            <div className="text-left">
-                              <div className="text-[10px] text-[#6B7280] font-semibold uppercase tracking-wider">ÖDEME TİPİ</div>
-                              <div className="text-xs text-[#6B7280]">Ödeme Yöntemi</div>
-                            </div>
-                            <span className="text-xs font-medium text-[#1F2937]">
-                              {r.payment_type === 'kapida_nakit' ? 'Kapıda Nakit' :
-                               r.payment_type === 'kapida_kart' ? 'Kapıda Kart' :
-                               r.payment_type?.replace('_', ' ') || 'Kapıda Nakit'}
-                            </span>
-                          </div>
 
                           {/* Tahmini Mesafe & Süre */}
                           <DistanceDurationCard distance={r.distance} duration={r.duration} />
