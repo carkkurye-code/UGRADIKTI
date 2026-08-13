@@ -2890,6 +2890,7 @@ export const db = {
 
   async createStoreOrder(params: {
     partner_id: string;
+    customer_id?: string | null;
     items: Array<{ product_id: string; quantity: number; title?: string }>;
     assistant_fee: number;
     delivery_address: string;
@@ -2905,6 +2906,7 @@ export const db = {
 
       const { data, error } = await client.rpc('create_store_order', {
         p_partner_id: params.partner_id,
+        p_customer_id: params.customer_id || null,
         p_items: params.items,
         p_assistant_fee: Number(params.assistant_fee) || 100,
         p_delivery_address: params.delivery_address || '',
@@ -2931,6 +2933,7 @@ export const db = {
       const returnedTask = {
         id: result.task_id,
         task_id: result.task_id,
+        customer_id: result.customer_id || params.customer_id || null,
         partner_id: params.partner_id,
         status: result.status || 'bekliyor',
         total_price: Number(result.total_price) || 0,

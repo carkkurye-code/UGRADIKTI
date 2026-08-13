@@ -11,7 +11,8 @@ CREATE OR REPLACE FUNCTION public.create_store_order(
   p_delivery_lng NUMERIC DEFAULT NULL,
   p_customer_name TEXT DEFAULT '',
   p_customer_phone TEXT DEFAULT '',
-  p_customer_note TEXT DEFAULT ''
+  p_customer_note TEXT DEFAULT '',
+  p_customer_id UUID DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -56,7 +57,7 @@ BEGIN
   END IF;
 
   IF v_partner_active IS NOT TRUE OR v_partner_status <> 'approved' THEN
-    RAISE EXCEPTION 'Seçilen mağaza şu anda aktif değil veya onaylanmamış (% )', v_partner_name;
+    RAISE EXCEPTION 'Seçilen mağaza şu anda aktif değil veya onaylanmamış (%)', v_partner_name;
   END IF;
 
   -- 2. Validate Items, Product Ownership, Active State & Calculate DB-Verified Product Total
@@ -124,8 +125,8 @@ BEGIN
   -- 5. Generate 4-digit verification code
   v_verification_code := LPAD(FLOOR(RANDOM() * 9000 + 1000)::TEXT, 4, '0');
 
-  -- 6. Resolve Authenticated User ID (NULL if anonymous)
-  v_customer_id := auth.uid();
+  -- 6. Resolve Customer User ID (prefers p_customer_id, falls back to auth.uid())
+  v_customer_id := COALESCE(p_customer_id, auth.uid());
 
   -- 7. Format Task Description cleanly
   v_task_description := '[Mağaza Siparişi - ' || COALESCE(v_partner_name, 'Mağaza') || ']' || E'\n\n';
@@ -188,6 +189,7 @@ BEGIN
   RETURN jsonb_build_object(
     'success', true,
     'task_id', v_task_id,
+    'customer_id', v_customer_id,
     'status', 'bekliyor',
     'total_price', v_total_price,
     'customer_price', v_customer_price,
@@ -201,5 +203,5 @@ END;
 $$;
 
 -- Revoke default public access and explicitly grant execution permissions
-REVOKE ALL ON FUNCTION public.create_store_order(UUID, JSONB, NUMERIC, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_store_order(UUID, JSONB, NUMERIC, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.create_store_order(UUID, JSONB, NUMERIC, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.create_store_order(UUID, JSONB, NUMERIC, TEXT, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, UUID) TO anon, authenticated;

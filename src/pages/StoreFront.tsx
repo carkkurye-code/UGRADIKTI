@@ -641,6 +641,7 @@ export function StoreFront() {
       console.log("BEFORE createStoreOrder RPC");
       const savedTask = await db.createStoreOrder({
         partner_id: partner.id,
+        customer_id: user?.id || null,
         items: orderItems,
         assistant_fee: effectiveFee,
         delivery_address: custAddress.trim(),
@@ -662,6 +663,7 @@ export function StoreFront() {
         task_id: savedTask.id || savedTask.task_id,
         is_task: true,
         source: 'tasks',
+        customer_id: user?.id || savedTask.customer_id || null,
         partner_id: partner.id,
         partner_name: partner.business_name,
         customer_name: custName.trim(),
