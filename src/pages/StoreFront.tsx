@@ -296,7 +296,7 @@ export function StoreFront() {
   }, [selectedProduct, partner?.category]);
 
   // Cart Local State
-  const { user } = useCustomerAuth();
+  const { user, profile } = useCustomerAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [pendingOrderSubmit, setPendingOrderSubmit] = useState(false);
 
@@ -341,19 +341,65 @@ export function StoreFront() {
     return '';
   });
 
+  // Keep customer name primary-sourced from logged-in profile
   useEffect(() => {
-    if (isCheckoutOpen) {
+    if (user) {
+      if (profile?.full_name && profile.full_name.trim() !== '') {
+        setCustName(profile.full_name.trim());
+      } else {
+        try {
+          const userSaved = localStorage.getItem(`${SAVED_CUSTOMER_INFO_KEY}_${user.id}`);
+          if (userSaved) {
+            const parsed = JSON.parse(userSaved);
+            if (parsed.custName) {
+              setCustName(parsed.custName);
+              return;
+            }
+          }
+        } catch (e) {}
+        setCustName('');
+      }
+    } else {
       try {
         const saved = localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed.custName && !custName) setCustName(parsed.custName);
-          if (parsed.custPhone && !custPhone) setCustPhone(parsed.custPhone);
-          if (parsed.custAddress && !custAddress) setCustAddress(parsed.custAddress);
+          if (parsed.custName) {
+            setCustName(parsed.custName);
+          }
         }
       } catch (e) {}
     }
-  }, [isCheckoutOpen]);
+  }, [user, profile?.full_name]);
+
+  useEffect(() => {
+    if (isCheckoutOpen) {
+      if (user) {
+        if (profile?.full_name && profile.full_name.trim() !== '') {
+          setCustName(profile.full_name.trim());
+        }
+        try {
+          const userSavedKey = `${SAVED_CUSTOMER_INFO_KEY}_${user.id}`;
+          const saved = localStorage.getItem(userSavedKey) || localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.custPhone && !custPhone) setCustPhone(parsed.custPhone);
+            if (parsed.custAddress && !custAddress) setCustAddress(parsed.custAddress);
+          }
+        } catch (e) {}
+      } else {
+        try {
+          const saved = localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.custName && !custName) setCustName(parsed.custName);
+            if (parsed.custPhone && !custPhone) setCustPhone(parsed.custPhone);
+            if (parsed.custAddress && !custAddress) setCustAddress(parsed.custAddress);
+          }
+        } catch (e) {}
+      }
+    }
+  }, [isCheckoutOpen, user, profile?.full_name]);
 
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
@@ -686,11 +732,15 @@ export function StoreFront() {
 
       // Auto-save customer details
       try {
-        localStorage.setItem(SAVED_CUSTOMER_INFO_KEY, JSON.stringify({
+        const savedInfo = {
           custName: custName.trim(),
           custPhone: custPhone.trim(),
           custAddress: custAddress.trim()
-        }));
+        };
+        localStorage.setItem(SAVED_CUSTOMER_INFO_KEY, JSON.stringify(savedInfo));
+        if (user?.id) {
+          localStorage.setItem(`${SAVED_CUSTOMER_INFO_KEY}_${user.id}`, JSON.stringify(savedInfo));
+        }
       } catch (e) {}
 
       setOrderSuccess(true);

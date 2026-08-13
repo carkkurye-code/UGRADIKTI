@@ -547,6 +547,9 @@ export const CustomerAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (isSupabaseConfigured && supabaseCustomer) {
       await supabaseCustomer.auth.signOut();
     }
+    try {
+      localStorage.removeItem('ugra_saved_customer_info');
+    } catch (e) {}
     setUser(null);
     setProfile(null);
     setRole('customer');
