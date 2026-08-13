@@ -307,43 +307,15 @@ export function StoreFront() {
   useModalBackButton(Boolean(selectedProduct), () => setSelectedProduct(null), 'product-detail-modal');
   useModalBackButton(isCheckoutOpen, () => setIsCheckoutOpen(false), 'checkout-modal');
 
-  // Checkout Form State (automatically populated from device localStorage if available)
-  const [custName, setCustName] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.custName || '';
-      }
-    } catch (e) {}
-    return '';
-  });
+  // Checkout Form State (strictly scoped per user or clean empty state)
+  const [custName, setCustName] = useState('');
+  const [custPhone, setCustPhone] = useState('');
+  const [custAddress, setCustAddress] = useState('');
 
-  const [custPhone, setCustPhone] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.custPhone || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-
-  const [custAddress, setCustAddress] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.custAddress || '';
-      }
-    } catch (e) {}
-    return '';
-  });
-
-  // Keep customer name primary-sourced from logged-in profile
+  // Synchronize customer details strictly based on active logged-in user
   useEffect(() => {
     if (user) {
+      // 1. Ad Soyad: profile.full_name is primary
       if (profile?.full_name && profile.full_name.trim() !== '') {
         setCustName(profile.full_name.trim());
       } else {
@@ -351,26 +323,51 @@ export function StoreFront() {
           const userSaved = localStorage.getItem(`${SAVED_CUSTOMER_INFO_KEY}_${user.id}`);
           if (userSaved) {
             const parsed = JSON.parse(userSaved);
-            if (parsed.custName) {
-              setCustName(parsed.custName);
-              return;
-            }
+            setCustName(parsed.custName || '');
+          } else {
+            setCustName('');
           }
-        } catch (e) {}
-        setCustName('');
+        } catch (e) {
+          setCustName('');
+        }
+      }
+
+      // 2. Telefon: profile.phone is primary, user scoped storage is secondary, otherwise empty
+      if (profile?.phone && profile.phone.trim() !== '') {
+        setCustPhone(profile.phone.trim());
+      } else {
+        try {
+          const userSaved = localStorage.getItem(`${SAVED_CUSTOMER_INFO_KEY}_${user.id}`);
+          if (userSaved) {
+            const parsed = JSON.parse(userSaved);
+            setCustPhone(parsed.custPhone || '');
+          } else {
+            setCustPhone('');
+          }
+        } catch (e) {
+          setCustPhone('');
+        }
+      }
+
+      // 3. Adres: only from active user's scoped localStorage, otherwise empty
+      try {
+        const userSaved = localStorage.getItem(`${SAVED_CUSTOMER_INFO_KEY}_${user.id}`);
+        if (userSaved) {
+          const parsed = JSON.parse(userSaved);
+          setCustAddress(parsed.custAddress || '');
+        } else {
+          setCustAddress('');
+        }
+      } catch (e) {
+        setCustAddress('');
       }
     } else {
-      try {
-        const saved = localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.custName) {
-            setCustName(parsed.custName);
-          }
-        }
-      } catch (e) {}
+      // Logged out / unauthenticated: reset fields to avoid lingering data
+      setCustName('');
+      setCustPhone('');
+      setCustAddress('');
     }
-  }, [user, profile?.full_name]);
+  }, [user, profile?.full_name, profile?.phone]);
 
   useEffect(() => {
     if (isCheckoutOpen) {
@@ -378,28 +375,21 @@ export function StoreFront() {
         if (profile?.full_name && profile.full_name.trim() !== '') {
           setCustName(profile.full_name.trim());
         }
+        if (profile?.phone && profile.phone.trim() !== '') {
+          setCustPhone(profile.phone.trim());
+        }
         try {
           const userSavedKey = `${SAVED_CUSTOMER_INFO_KEY}_${user.id}`;
-          const saved = localStorage.getItem(userSavedKey) || localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
+          const saved = localStorage.getItem(userSavedKey);
           if (saved) {
             const parsed = JSON.parse(saved);
-            if (parsed.custPhone && !custPhone) setCustPhone(parsed.custPhone);
-            if (parsed.custAddress && !custAddress) setCustAddress(parsed.custAddress);
-          }
-        } catch (e) {}
-      } else {
-        try {
-          const saved = localStorage.getItem(SAVED_CUSTOMER_INFO_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed.custName && !custName) setCustName(parsed.custName);
-            if (parsed.custPhone && !custPhone) setCustPhone(parsed.custPhone);
-            if (parsed.custAddress && !custAddress) setCustAddress(parsed.custAddress);
+            if (parsed.custPhone && !profile?.phone) setCustPhone(parsed.custPhone);
+            if (parsed.custAddress) setCustAddress(parsed.custAddress);
           }
         } catch (e) {}
       }
     }
-  }, [isCheckoutOpen, user, profile?.full_name]);
+  }, [isCheckoutOpen, user, profile?.full_name, profile?.phone]);
 
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
@@ -730,15 +720,14 @@ export function StoreFront() {
         console.warn('Dispatch notice for store task:', dispatchErr);
       }
 
-      // Auto-save customer details
+      // Auto-save customer details strictly to user-scoped key
       try {
-        const savedInfo = {
-          custName: custName.trim(),
-          custPhone: custPhone.trim(),
-          custAddress: custAddress.trim()
-        };
-        localStorage.setItem(SAVED_CUSTOMER_INFO_KEY, JSON.stringify(savedInfo));
         if (user?.id) {
+          const savedInfo = {
+            custName: custName.trim(),
+            custPhone: custPhone.trim(),
+            custAddress: custAddress.trim()
+          };
           localStorage.setItem(`${SAVED_CUSTOMER_INFO_KEY}_${user.id}`, JSON.stringify(savedInfo));
         }
       } catch (e) {}

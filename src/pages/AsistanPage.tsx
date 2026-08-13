@@ -1125,6 +1125,12 @@ export function AsistanPage() {
                 extractedName = custMatch[1].trim();
               }
 
+              let extractedPhone = '';
+              const phoneMatch = rawDesc.match(/Müşteri:[^\(\n\r]*\(([^)]+)\)/i);
+              if (phoneMatch && phoneMatch[1]?.trim()) {
+                extractedPhone = phoneMatch[1].trim();
+              }
+
               let desc = rawDesc;
               if (desc && desc.includes('[') && desc.includes(']')) {
                 desc = desc
@@ -1159,7 +1165,7 @@ export function AsistanPage() {
                 customer_id: order.customer_id || order.user_id || null,
                 user_id: order.user_id || order.customer_id || null,
                 customer_name: finalName,
-                customer_phone: order.customer_phone || '',
+                customer_phone: order.customer_phone || extractedPhone || '',
                 customer_address: order.customer_address || order.delivery_address || 'Adres',
                 delivery_address: order.delivery_address || order.customer_address || 'Adres',
                 pickup_address: order.pickup_address || order.customer_address || 'Adres',
@@ -1214,6 +1220,12 @@ export function AsistanPage() {
                 extractedName = custMatch[1].trim();
               }
 
+              let extractedPhone = '';
+              const phoneMatch = rawDesc.match(/Müşteri:[^\(\n\r]*\(([^)]+)\)/i);
+              if (phoneMatch && phoneMatch[1]?.trim()) {
+                extractedPhone = phoneMatch[1].trim();
+              }
+
               let desc = rawDesc;
               if (desc && desc.includes('[') && desc.includes(']')) {
                 desc = desc
@@ -1250,7 +1262,7 @@ export function AsistanPage() {
                 customer_id: task.customer_id || task.user_id || null,
                 user_id: task.user_id || task.customer_id || null,
                 customer_name: finalName,
-                customer_phone: task.customer_phone || '',
+                customer_phone: task.customer_phone || extractedPhone || '',
                 customer_address: task.customer_address || task.delivery_address || 'Adres',
                 delivery_address: task.delivery_address || task.customer_address || 'Adres',
                 pickup_address: task.pickup_address || task.store_name || task.partner_name || 'Mağaza',
