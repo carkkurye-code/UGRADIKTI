@@ -2901,12 +2901,10 @@ export const db = {
     customer_note?: string;
   }): Promise<any> {
     if (isSupabaseConfigured && supabase) {
-      const client = await getActiveSupabaseClient();
       console.log('🚀 Calling create_store_order RPC with params:', params);
 
-      const { data, error } = await client.rpc('create_store_order', {
+      const { data, error } = await supabaseCustomer.rpc('create_store_order', {
         p_partner_id: params.partner_id,
-        p_customer_id: params.customer_id || null,
         p_items: params.items,
         p_assistant_fee: Number(params.assistant_fee) || 100,
         p_delivery_address: params.delivery_address || '',
