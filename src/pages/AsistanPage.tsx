@@ -1110,6 +1110,8 @@ export function AsistanPage() {
               return {
                 id: order.id,
                 order_id: order.id,
+                customer_id: order.customer_id || order.user_id || null,
+                user_id: order.user_id || order.customer_id || null,
                 customer_name: order.customer_name || 'Müşteri',
                 customer_phone: order.customer_phone || '',
                 customer_address: order.customer_address || order.delivery_address || 'Adres',
@@ -1182,6 +1184,8 @@ export function AsistanPage() {
                 task_id: task.id,
                 is_task: true,
                 source: 'tasks',
+                customer_id: task.customer_id || task.user_id || null,
+                user_id: task.user_id || task.customer_id || null,
                 customer_name: task.customer_name || 'Müşteri',
                 customer_phone: task.customer_phone || '',
                 customer_address: task.customer_address || task.delivery_address || 'Adres',
