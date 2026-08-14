@@ -52,6 +52,7 @@ export interface ResolvedTaskFields {
   customer_phone: string;
   customer_address: string;
   task_description: string;
+  store_name?: string;
   pickup_address: string;
   pickup_address_detail: string;
   delivery_address: string;
@@ -65,6 +66,7 @@ export interface ResolvedTaskFields {
   longitude?: number;
   payment_type: string;
   notes: string;
+  total_price: number;
   courier_net: number;
   customer_price: number;
   distance: string;
@@ -128,12 +130,14 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
       customer_phone: '',
       customer_address: '',
       task_description: '',
+      store_name: '',
       pickup_address: '',
       pickup_address_detail: '',
       delivery_address: '',
       delivery_address_detail: '',
       payment_type: 'Kapıda Nakit',
       notes: '',
+      total_price: 0,
       courier_net: 0,
       customer_price: 0,
       distance: '',
@@ -148,7 +152,7 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
   const o = item.order || item;
   const p = item.payload || o.payload || {};
 
-  // 1. YAPILACAK İŞ (Task Description - fallback: task_description -> description -> title -> note -> notes)
+  // 1. YAPILACAK İŞ (Task Description)
   let taskDescription = '';
   const descCandidates = [
     item.task_description,
@@ -199,8 +203,19 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
 
   if (taskDescription) {
     taskDescription = taskDescription
+      .replace(/\[(?:Mağaza Siparişi\s*-\s*|Mağaza:\s*|Partner:\s*)[^\]]+\]\s*/gi, '')
+      .replace(/^\[.*?\]\s*/g, '')
       .replace(/Müşteri:\s*[^\n\r]*/gi, '')
-      .replace(/\n\s*\n\s*\n/g, '\n\n')
+      .replace(/•?\s*Adres Detayı:[^\n\r]*/gi, '')
+      .replace(/•?\s*Ne Zaman:[^\n\r]*/gi, '')
+      .replace(/•?\s*Ürün(?:lerin)?\s*Toplamı:[^\n\r]*/gi, '')
+      .replace(/•?\s*Asistan\s*Hizmet\s*Bedeli:[^\n\r]*/gi, '')
+      .replace(/•?\s*Hizmet\s*Bedeli:[^\n\r]*/gi, '')
+      .replace(/•?\s*Genel\s*Toplam:[^\n\r]*/gi, '')
+      .replace(/•?\s*Toplam\s*Fiyat:[^\n\r]*/gi, '')
+      .replace(/•?\s*Toplam\s*Tutar:[^\n\r]*/gi, '')
+      .replace(/•?\s*Müşterinin\s*(?:Toplam\s*)?Ödeyeceği:[^\n\r]*/gi, '')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n')
       .trim();
   } else {
     taskDescription = '';
@@ -262,31 +277,94 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 4. ALINACAK ADRES
+  if (!customerPhone) {
+    const textPool = [item.task_description, o.task_description, item.notes, o.notes, p.notes];
+    for (const text of textPool) {
+      if (typeof text === 'string' && text) {
+        const match = text.match(/Müşteri:[^\(\n\r]*\(([^)]+)\)/i);
+        if (match && match[1]?.trim()) {
+          customerPhone = match[1].trim();
+          break;
+        }
+      }
+    }
+  }
+
+  // 4. MAĞAZA / PARTNER ADI
+  let storeName = '';
+  const storeCandidates = [
+    item.store_name,
+    item.partner_name,
+    item.partner?.business_name,
+    item.partner?.name,
+    o.store_name,
+    o.partner_name,
+    o.partner?.business_name,
+    o.partner?.name,
+    p.store_name,
+    p.partner_name,
+    p.business_name,
+    item.restaurant_name,
+    o.restaurant_name,
+  ];
+  for (const sc of storeCandidates) {
+    if (sc && typeof sc === 'string' && sc.trim() && sc.trim() !== 'Mağaza') {
+      storeName = sc.trim();
+      break;
+    }
+  }
+  if (!storeName) {
+    const rawPool = [item.raw_notes, item.task_description, o.task_description, item.notes, o.notes, p.notes];
+    for (const text of rawPool) {
+      if (typeof text === 'string' && text) {
+        const match = text.match(/\[(?:Mağaza Siparişi\s*-\s*|Mağaza:\s*|Partner:\s*)([^\]]+)\]/i);
+        if (match && match[1]?.trim()) {
+          const found = match[1].trim();
+          if (found && found !== 'Mağaza') {
+            storeName = found;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 5. ALINACAK ADRES (pickup_address)
   let pickupAddress = '';
   const pickupCandidates = [
     item.pickup_address,
+    item.store_address,
+    item.partner_address,
     item.origin_address,
     item.start_address,
+    item.partner?.address,
     o.pickup_address,
+    o.store_address,
+    o.partner_address,
     o.origin_address,
+    o.partner?.address,
     p.pickup_address,
+    p.store_address,
+    p.address,
   ];
   for (const pac of pickupCandidates) {
-    if (pac && typeof pac === 'string' && pac.trim()) {
+    if (pac && typeof pac === 'string' && pac.trim() && pac.trim() !== 'Mağaza' && pac.trim() !== 'Adres') {
       pickupAddress = pac.trim();
       break;
     }
   }
 
-  // 5. ALINACAK ADRES DETAYI
+  // 6. ALINACAK ADRES DETAYI
   let pickupAddressDetail = '';
   const pickupDetailCandidates = [
     item.pickup_address_detail,
     item.pickup_detail,
+    item.store_address_detail,
+    item.partner_address_detail,
     item.address_detail,
     item.details,
     o.pickup_detail,
+    o.pickup_address_detail,
     o.address_detail,
     p.pickup_address_detail,
     p.address_detail,
@@ -298,7 +376,7 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 6. TESLİM ADRESİ
+  // 7. TESLİM ADRESİ
   let deliveryAddress = '';
   const deliveryCandidates = [
     item.delivery_address,
@@ -309,13 +387,13 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     p.delivery_address,
   ];
   for (const dac of deliveryCandidates) {
-    if (dac && typeof dac === 'string' && dac.trim()) {
+    if (dac && typeof dac === 'string' && dac.trim() && dac.trim() !== 'Adres' && dac.trim() !== 'Teslimat Adresi') {
       deliveryAddress = dac.trim();
       break;
     }
   }
 
-  // 7. TESLİM ADRESİ DETAYI
+  // 8. TESLİM ADRESİ DETAYI
   let deliveryAddressDetail = '';
   const deliveryDetailCandidates = [
     item.delivery_address_detail,
@@ -335,7 +413,7 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 8. ÖDEME
+  // 9. ÖDEME
   let paymentType = '';
   const paymentCandidates = [
     item.payment_type,
@@ -350,7 +428,7 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 9. SİPARİŞ NOTU
+  // 10. SİPARİŞ NOTU
   let notes = '';
   const notesCandidates = [
     item.notes,
@@ -362,7 +440,17 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
   ];
   for (const n of notesCandidates) {
     if (n && typeof n === 'string' && n.trim()) {
-      const clean = n.replace(/\[.*?\]/g, '').replace(/• Adres Detayı:[\s\S]*/g, '').trim();
+      const clean = n
+        .replace(/\[.*?\]/g, '')
+        .replace(/•?\s*Adres Detayı:[^\n\r]*/gi, '')
+        .replace(/•?\s*Ne Zaman:[^\n\r]*/gi, '')
+        .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+        .replace(/•?\s*Ürün(?:lerin)?\s*Toplamı:[^\n\r]*/gi, '')
+        .replace(/•?\s*Asistan\s*Hizmet\s*Bedeli:[^\n\r]*/gi, '')
+        .replace(/•?\s*Genel\s*Toplam:[^\n\r]*/gi, '')
+        .replace(/•?\s*Toplam\s*Fiyat:[^\n\r]*/gi, '')
+        .replace(/•?\s*Toplam\s*Tutar:[^\n\r]*/gi, '')
+        .trim();
       if (clean && clean !== taskDescription && clean !== 'Hizmet Talebi' && clean !== 'Yapılacak iş belirtilmemiş.') {
         notes = clean;
         break;
@@ -370,7 +458,7 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 10. KURYE KAZANCI
+  // 11. ASİSTAN HİZMET BEDELİ (courier_net / assistant_fee)
   let courierNet = 0;
   const netCandidates = [
     item.courier_net,
@@ -378,10 +466,13 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     p.courier_net,
     item.assistant_earning,
     item.courier_fee,
+    item.assistant_fee,
     o.assistant_earning,
     o.courier_fee,
+    o.assistant_fee,
     p.assistant_earning,
     p.courier_fee,
+    p.assistant_fee,
   ];
   for (const net of netCandidates) {
     if (typeof net === 'number' && net > 0) {
@@ -393,19 +484,34 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 11. MÜŞTERİ FİYATI
+  // 12. ÜRÜNLERİN TOPLAMI (total_price / base_price / products_total)
+  let totalPrice = 0;
+  const totalCandidates = [
+    item.total_price,
+    item.base_price,
+    item.products_total,
+    item.products_price,
+    o.total_price,
+    o.base_price,
+    p.total_price,
+    p.base_price,
+  ];
+  for (const pr of totalCandidates) {
+    if (typeof pr === 'number' && pr > 0) {
+      totalPrice = pr;
+      break;
+    } else if (typeof pr === 'string' && !isNaN(parseFloat(pr)) && parseFloat(pr) > 0) {
+      totalPrice = parseFloat(pr);
+      break;
+    }
+  }
+
+  // 13. MÜŞTERİ TOPLAM ÖDEYECEĞİ (customer_price)
   let customerPrice = 0;
   const priceCandidates = [
     item.customer_price,
     o.customer_price,
     p.customer_price,
-    item.total_price,
-    item.price,
-    o.total_price,
-    o.price,
-    p.customer_price,
-    p.total_price,
-    p.price,
   ];
   for (const pr of priceCandidates) {
     if (typeof pr === 'number' && pr > 0) {
@@ -417,7 +523,58 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 12. MESAFE VE SÜRE
+  // Fallback regex parsing from notes/raw_notes/task_description
+  const rawTextPool = [
+    item.raw_notes,
+    item.notes,
+    item.task_description,
+    o.raw_notes,
+    o.notes,
+    o.task_description,
+    p.notes,
+  ];
+  for (const text of rawTextPool) {
+    if (typeof text === 'string' && text) {
+      if (totalPrice === 0) {
+        const matchUrun = text.match(/(?:•\s*)?Ürün(?:lerin)?\s*Toplamı:\s*(\d+(?:[.,]\d+)?)/i);
+        if (matchUrun && matchUrun[1]) {
+          totalPrice = parseFloat(matchUrun[1].replace(',', '.'));
+        }
+      }
+      if (courierNet === 0) {
+        const matchAsistan = text.match(/(?:•\s*)?Asistan\s*Hizmet\s*Bedeli:\s*(\d+(?:[.,]\d+)?)/i);
+        if (matchAsistan && matchAsistan[1]) {
+          courierNet = parseFloat(matchAsistan[1].replace(',', '.'));
+        }
+      }
+      if (customerPrice === 0) {
+        const matchGenel = text.match(/(?:•\s*)?(?:Genel\s*Toplam|Toplam\s*Fiyat|Müşterinin\s*(?:Toplam\s*)?Ödeyeceği):\s*(\d+(?:[.,]\d+)?)/i);
+        if (matchGenel && matchGenel[1]) {
+          customerPrice = parseFloat(matchGenel[1].replace(',', '.'));
+        }
+      }
+    }
+  }
+
+  // Price synchronization & consistency logic:
+  if (customerPrice === 0) {
+    if (totalPrice > 0 && courierNet > 0) {
+      customerPrice = totalPrice + courierNet;
+    } else if (totalPrice > 0) {
+      customerPrice = totalPrice;
+    } else if (courierNet > 0) {
+      customerPrice = courierNet;
+    }
+  } else {
+    // If customerPrice and courierNet exist, but totalPrice was unset or set equal to customerPrice
+    if (courierNet > 0 && (totalPrice === 0 || totalPrice === customerPrice)) {
+      totalPrice = customerPrice > courierNet ? (customerPrice - courierNet) : 0;
+    } else if (totalPrice > 0 && customerPrice < totalPrice) {
+      customerPrice = totalPrice + courierNet;
+    }
+  }
+
+  // 14. MESAFE VE SÜRE
   let distance = '';
   const distCandidates = [
     item.distance,
@@ -455,7 +612,7 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 13. HİZMET TİPİ (hemen vs gecerken)
+  // 15. HİZMET TİPİ (hemen vs gecerken)
   let serviceType: 'hemen' | 'gecerken' = 'hemen';
   const rawServiceType = item.service_type || item.delivery_type || o.service_type || o.delivery_type || p.service_type || p.delivery_type || item.task_type;
   if (rawServiceType === 'gecerken' || rawServiceType === 'gecerken_ugra') {
@@ -471,7 +628,7 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     }
   }
 
-  // 14. HİZMET EYLEMİ (al vs birak)
+  // 16. HİZMET EYLEMİ (al vs birak)
   let serviceAction: 'al' | 'birak' = 'al';
   const rawAction = item.service_action || item.service_mode || item.action_type || o.service_action || o.service_mode || o.action_type || p.service_action || p.service_mode || p.action_type;
   if (rawAction === 'birak') {
@@ -491,12 +648,12 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
   const orderNumber = item.order_number || (id ? id.slice(0, 8).toUpperCase() : 'GÖREV');
   const status = item.status || o.status || 'pending';
 
-  const pLat = item.pickup_lat ?? o.pickup_lat ?? item.latitude ?? o.latitude ?? p.latitude;
-  const pLng = item.pickup_lng ?? o.pickup_lng ?? item.longitude ?? o.longitude ?? p.longitude;
-  const dLat = item.delivery_lat ?? o.delivery_lat ?? item.latitude ?? o.latitude ?? p.latitude;
-  const dLng = item.delivery_lng ?? o.delivery_lng ?? item.longitude ?? o.longitude ?? p.longitude;
+  const pLat = item.pickup_lat ?? o.pickup_lat ?? null;
+  const pLng = item.pickup_lng ?? o.pickup_lng ?? null;
+  const dLat = item.delivery_lat ?? o.delivery_lat ?? item.latitude ?? o.latitude ?? p.latitude ?? null;
+  const dLng = item.delivery_lng ?? o.delivery_lng ?? item.longitude ?? o.longitude ?? p.longitude ?? null;
 
-  // 15. ZAMAN TERCİHİ (preferred_time)
+  // 17. ZAMAN TERCİHİ (preferred_time)
   let resolvedPreferredTime: string | null =
     item.preferred_time || o.preferred_time || p.preferred_time || item.raw_preferred_time || null;
 
@@ -532,8 +689,9 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     status,
     customer_name: customerName,
     customer_phone: customerPhone,
-    customer_address: deliveryAddress || pickupAddress || item.customer_address || o.customer_address || '',
+    customer_address: deliveryAddress || item.customer_address || o.customer_address || '',
     task_description: taskDescription,
+    store_name: storeName,
     pickup_address: pickupAddress,
     pickup_address_detail: pickupAddressDetail,
     delivery_address: deliveryAddress,
@@ -543,10 +701,11 @@ export function resolveTaskFields(item: any): ResolvedTaskFields {
     pickup_lng: pLng,
     delivery_lat: dLat,
     delivery_lng: dLng,
-    latitude: pLat ?? dLat,
-    longitude: pLng ?? dLng,
+    latitude: dLat ?? pLat,
+    longitude: dLng ?? pLng,
     payment_type: paymentType || 'Kapıda Nakit',
     notes,
+    total_price: totalPrice,
     courier_net: courierNet,
     customer_price: customerPrice,
     distance,
@@ -568,8 +727,19 @@ const TaskDescriptionCard = React.memo(function TaskDescriptionCard({ descriptio
   }
 
   const cleanDesc = description
+    .replace(/\[(?:Mağaza Siparişi\s*-\s*|Mağaza:\s*|Partner:\s*)[^\]]+\]\s*/gi, '')
+    .replace(/^\[.*?\]\s*/g, '')
     .replace(/Müşteri:\s*[^\n\r]*/gi, '')
-    .replace(/\n\s*\n\s*\n/g, '\n\n')
+    .replace(/•?\s*Adres Detayı:[^\n\r]*/gi, '')
+    .replace(/•?\s*Ne Zaman:[^\n\r]*/gi, '')
+    .replace(/•?\s*Ürün(?:lerin)?\s*Toplamı:[^\n\r]*/gi, '')
+    .replace(/•?\s*Asistan\s*Hizmet\s*Bedeli:[^\n\r]*/gi, '')
+    .replace(/•?\s*Hizmet\s*Bedeli:[^\n\r]*/gi, '')
+    .replace(/•?\s*Genel\s*Toplam:[^\n\r]*/gi, '')
+    .replace(/•?\s*Toplam\s*Fiyat:[^\n\r]*/gi, '')
+    .replace(/•?\s*Toplam\s*Tutar:[^\n\r]*/gi, '')
+    .replace(/•?\s*Müşterinin\s*(?:Toplam\s*)?Ödeyeceği:[^\n\r]*/gi, '')
+    .replace(/\n\s*\n\s*\n+/g, '\n\n')
     .trim();
 
   if (!cleanDesc) {
@@ -594,6 +764,146 @@ const TaskDescriptionCard = React.memo(function TaskDescriptionCard({ descriptio
         >
           {isExpanded ? 'Daha Az Göster' : 'Devamını Gör'}
         </button>
+      )}
+    </div>
+  );
+});
+
+const CustomerOfferCard = React.memo(function CustomerOfferCard({
+  totalPrice,
+  courierNet,
+  customerPrice,
+}: {
+  totalPrice?: number;
+  courierNet?: number;
+  customerPrice?: number;
+}) {
+  const pTotal = Number(totalPrice) || 0;
+  const cNet = Number(courierNet) || 0;
+  let cTotal = Number(customerPrice) || 0;
+
+  if (cTotal === 0 && (pTotal > 0 || cNet > 0)) {
+    cTotal = pTotal + cNet;
+  }
+
+  const effectiveProductTotal = pTotal > 0
+    ? pTotal
+    : (cTotal > cNet && cNet > 0 ? (cTotal - cNet) : 0);
+
+  const effectiveGrandTotal = cTotal > 0
+    ? (cTotal >= effectiveProductTotal ? cTotal : (effectiveProductTotal + cNet))
+    : (effectiveProductTotal + cNet);
+
+  return (
+    <div className="bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E5E7EB] space-y-2.5 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-[#6B7280] font-bold uppercase tracking-wider">
+          MÜŞTERİ TEKLİFİ
+        </span>
+      </div>
+
+      <div className="space-y-1.5 pt-0.5">
+        {effectiveProductTotal > 0 && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#6B7280] font-medium">Ürünlerin Toplamı</span>
+            <span className="font-semibold text-[#1F2937] font-mono text-sm">
+              {effectiveProductTotal} TL
+            </span>
+          </div>
+        )}
+
+        {cNet > 0 && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#6B7280] font-medium">Asistan Hizmet Bedeli</span>
+            <span className="font-bold text-[#2563EB] font-mono text-sm">
+              {cNet} TL
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="pt-2 border-t border-[#E5E7EB] flex items-center justify-between">
+        <div className="text-left">
+          <div className="text-xs font-bold text-[#1F2937]">Müşterinin Toplam Ödeyeceği</div>
+        </div>
+        <div className="font-bold text-[#10B981] text-lg font-mono">
+          {effectiveGrandTotal || effectiveProductTotal || cNet || 0} TL
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const PickupAddressCard = React.memo(function PickupAddressCard({
+  storeName,
+  pickupAddress,
+  pickupAddressDetail,
+  pickupLat,
+  pickupLng,
+}: {
+  storeName?: string;
+  pickupAddress?: string;
+  pickupAddressDetail?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+}) {
+  const hasStore = !!(storeName && storeName.trim() !== '' && storeName.trim() !== 'Mağaza');
+  const hasAddress = !!(pickupAddress && pickupAddress.trim() !== '' && pickupAddress.trim() !== 'Mağaza' && pickupAddress.trim() !== storeName?.trim());
+
+  if (!hasStore && !hasAddress && !pickupAddress) {
+    return null;
+  }
+
+  const hasCoords = pickupLat != null && pickupLng != null && Number(pickupLat) !== 0 && Number(pickupLng) !== 0;
+
+  const mapHref = hasCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${pickupLat},${pickupLng}`
+    : (hasAddress && pickupAddress
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pickupAddress)}`
+        : (hasStore && storeName
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(storeName)}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pickupAddress || storeName || 'Sakarya')}`
+          )
+      );
+
+  return (
+    <div className="bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E5E7EB] text-xs space-y-1.5 w-full min-w-0">
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider flex items-center gap-1 shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
+          ALINACAK ADRES
+        </span>
+        <a
+          href={mapHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-2.5 py-1 bg-white hover:bg-gray-50 text-[#1F2937] border border-[#E5E7EB] font-bold text-[10px] rounded-lg shadow-sm cursor-pointer transition-all shrink-0 ml-auto flex items-center gap-1"
+        >
+          <ExternalLink className="w-3 h-3 text-[#6B7280]" />
+          <span>Haritada Aç</span>
+        </a>
+      </div>
+      <div className="space-y-0.5 text-left min-w-0 w-full">
+        {hasStore && (
+          <p className="text-[#1F2937] text-xs font-bold leading-snug break-words">
+            {storeName}
+          </p>
+        )}
+        {hasAddress && (
+          <p className="text-[#4B5563] text-xs font-normal leading-relaxed break-words whitespace-pre-wrap">
+            {pickupAddress}
+          </p>
+        )}
+        {!hasStore && !hasAddress && (
+          <p className="text-[#1F2937] text-xs font-medium leading-relaxed">
+            {storeName || pickupAddress || ''}
+          </p>
+        )}
+      </div>
+      {pickupAddressDetail && (
+        <p className="text-[#6B7280] text-[11px] pt-1 border-t border-[#E5E7EB]/60 leading-normal break-words whitespace-pre-wrap min-w-0 w-full text-left">
+          Adres Detayı: {pickupAddressDetail}
+        </p>
       )}
     </div>
   );
@@ -1131,6 +1441,12 @@ export function AsistanPage() {
                 extractedPhone = phoneMatch[1].trim();
               }
 
+              let extractedStoreName = '';
+              const storeMatch = rawDesc.match(/\[(?:Mağaza Siparişi\s*-\s*|Mağaza:\s*|Partner:\s*)([^\]]+)\]/i);
+              if (storeMatch && storeMatch[1]?.trim() && storeMatch[1].trim() !== 'Mağaza') {
+                extractedStoreName = storeMatch[1].trim();
+              }
+
               let desc = rawDesc;
               if (desc && desc.includes('[') && desc.includes(']')) {
                 desc = desc
@@ -1141,6 +1457,11 @@ export function AsistanPage() {
               }
               desc = desc
                 .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+                .replace(/•?\s*Ürün Toplamı:[^\n\r]*/gi, '')
+                .replace(/•?\s*Asistan Hizmet Bedeli:[^\n\r]*/gi, '')
+                .replace(/•?\s*Genel Toplam:[^\n\r]*/gi, '')
+                .replace(/•?\s*Toplam Fiyat:[^\n\r]*/gi, '')
+                .replace(/•?\s*Toplam Tutar:[^\n\r]*/gi, '')
                 .replace(/\n\s*\n\s*\n/g, '\n\n')
                 .trim();
 
@@ -1151,6 +1472,9 @@ export function AsistanPage() {
                   .replace(/• Adres Detayı:[^\n\r]*/gi, '')
                   .replace(/• Ne Zaman:[^\n\r]*/gi, '')
                   .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+                  .replace(/•?\s*Ürün Toplamı:[^\n\r]*/gi, '')
+                  .replace(/•?\s*Asistan Hizmet Bedeli:[^\n\r]*/gi, '')
+                  .replace(/•?\s*Genel Toplam:[^\n\r]*/gi, '')
                   .trim();
                 if (noteStr === desc) noteStr = '';
               }
@@ -1158,6 +1482,8 @@ export function AsistanPage() {
               const finalName = order.customer_name && order.customer_name !== 'Müşteri' && order.customer_name.trim() !== ''
                 ? order.customer_name.trim()
                 : (extractedName || 'Müşteri');
+
+              const finalStore = order.store_name || order.partner_name || extractedStoreName || undefined;
 
               return {
                 id: order.id,
@@ -1167,12 +1493,13 @@ export function AsistanPage() {
                 customer_name: finalName,
                 customer_phone: order.customer_phone || extractedPhone || '',
                 customer_address: order.customer_address || order.delivery_address || 'Adres',
-                delivery_address: order.delivery_address || order.customer_address || 'Adres',
-                pickup_address: order.pickup_address || order.customer_address || 'Adres',
+                delivery_address: order.delivery_address || order.customer_address || '',
+                pickup_address: order.pickup_address || finalStore || '',
+                store_name: finalStore,
                 payment_type: order.payment_type || 'Kapıda Nakit',
                 total_price: Number(order.total_price || order.customer_price || 0),
                 customer_price: Number(order.customer_price || order.total_price || 0),
-                courier_net: Number(order.courier_net || order.total_price || 0),
+                courier_net: Number(order.courier_net || 0),
                 items: order.items || [],
                 notes: noteStr || undefined,
                 raw_notes: order.notes || null,
@@ -1226,6 +1553,12 @@ export function AsistanPage() {
                 extractedPhone = phoneMatch[1].trim();
               }
 
+              let extractedStoreName = '';
+              const storeMatch = rawDesc.match(/\[(?:Mağaza Siparişi\s*-\s*|Mağaza:\s*|Partner:\s*)([^\]]+)\]/i);
+              if (storeMatch && storeMatch[1]?.trim() && storeMatch[1].trim() !== 'Mağaza') {
+                extractedStoreName = storeMatch[1].trim();
+              }
+
               let desc = rawDesc;
               if (desc && desc.includes('[') && desc.includes(']')) {
                 desc = desc
@@ -1236,6 +1569,11 @@ export function AsistanPage() {
               }
               desc = desc
                 .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+                .replace(/•?\s*Ürün Toplamı:[^\n\r]*/gi, '')
+                .replace(/•?\s*Asistan Hizmet Bedeli:[^\n\r]*/gi, '')
+                .replace(/•?\s*Genel Toplam:[^\n\r]*/gi, '')
+                .replace(/•?\s*Toplam Fiyat:[^\n\r]*/gi, '')
+                .replace(/•?\s*Toplam Tutar:[^\n\r]*/gi, '')
                 .replace(/\n\s*\n\s*\n/g, '\n\n')
                 .trim();
 
@@ -1246,6 +1584,9 @@ export function AsistanPage() {
                   .replace(/• Adres Detayı:[^\n\r]*/gi, '')
                   .replace(/• Ne Zaman:[^\n\r]*/gi, '')
                   .replace(/Müşteri:\s*[^\n\r]*/gi, '')
+                  .replace(/•?\s*Ürün Toplamı:[^\n\r]*/gi, '')
+                  .replace(/•?\s*Asistan Hizmet Bedeli:[^\n\r]*/gi, '')
+                  .replace(/•?\s*Genel Toplam:[^\n\r]*/gi, '')
                   .trim();
                 if (noteStr === desc) noteStr = '';
               }
@@ -1253,6 +1594,8 @@ export function AsistanPage() {
               const finalName = task.customer_name && task.customer_name !== 'Müşteri' && task.customer_name.trim() !== ''
                 ? task.customer_name.trim()
                 : (extractedName || 'Müşteri');
+
+              const finalStore = task.store_name || task.partner_name || extractedStoreName || undefined;
 
               return {
                 id: task.id,
@@ -1264,12 +1607,13 @@ export function AsistanPage() {
                 customer_name: finalName,
                 customer_phone: task.customer_phone || extractedPhone || '',
                 customer_address: task.customer_address || task.delivery_address || 'Adres',
-                delivery_address: task.delivery_address || task.customer_address || 'Adres',
-                pickup_address: task.pickup_address || task.store_name || task.partner_name || 'Mağaza',
+                delivery_address: task.delivery_address || task.customer_address || '',
+                pickup_address: task.pickup_address || finalStore || '',
+                store_name: finalStore,
                 payment_type: task.payment_type || 'Kapıda Kart',
                 total_price: Number(task.total_price || task.customer_price || 0),
                 customer_price: Number(task.customer_price || task.total_price || 0),
-                courier_net: Number(task.courier_net || task.total_price || 0),
+                courier_net: Number(task.courier_net || 0),
                 items: task.items || [],
                 notes: noteStr || undefined,
                 raw_notes: task.notes || null,
@@ -2437,46 +2781,24 @@ export function AsistanPage() {
                           {/* 2. Yapılacak İş */}
                           <TaskDescriptionCard description={r.task_description} />
 
-                          {/* 3. Müşteri Teklifi */}
-                          <div className="bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E5E7EB] flex items-center justify-between text-xs">
-                            <div className="text-left">
-                              <div className="text-[10px] text-[#6B7280] font-bold uppercase tracking-wider">MÜŞTERİ TEKLİFİ</div>
-                              <div className="text-xs text-[#6B7280]">Müşterinin sunduğu teklif tutarı</div>
-                            </div>
-                            <div className="font-bold text-[#10B981] text-lg font-mono">
-                              {r.customer_price || order.total_price || r.courier_net || 0} TL
-                            </div>
-                          </div>
+                          {/* 3. Müşteri Teklifi & Asistan Hizmet Bedeli */}
+                          <CustomerOfferCard
+                            totalPrice={r.total_price}
+                            courierNet={r.courier_net}
+                            customerPrice={r.customer_price}
+                          />
 
                           {/* 4. Müşteri Bilgileri */}
                           <CustomerInfoCard name={r.customer_name} phone={r.customer_phone} />
 
                           {/* 5. Alınacak Adres */}
-                          {r.pickup_address && (
-                            <div className="bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E5E7EB] text-xs space-y-1.5 w-full min-w-0">
-                              <div className="flex items-center justify-between gap-2 min-w-0">
-                                <span className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider flex items-center gap-1 shrink-0">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
-                                  ALINACAK ADRES
-                                </span>
-                                <a
-                                  href={r.pickup_lat != null && r.pickup_lng != null ? `https://www.google.com/maps/search/?api=1&query=${r.pickup_lat},${r.pickup_lng}` : (r.latitude != null && r.longitude != null ? `https://www.google.com/maps/search/?api=1&query=${r.latitude},${r.longitude}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.pickup_address)}`)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-2.5 py-1 bg-white hover:bg-gray-50 text-[#1F2937] border border-[#E5E7EB] font-bold text-[10px] rounded-lg shadow-sm cursor-pointer transition-all shrink-0 ml-auto flex items-center gap-1"
-                                >
-                                  <ExternalLink className="w-3 h-3 text-[#6B7280]" />
-                                  <span>Haritada Aç</span>
-                                </a>
-                              </div>
-                              <p className="text-[#1F2937] text-xs font-medium leading-relaxed break-words whitespace-pre-wrap min-w-0 w-full text-left">{r.pickup_address}</p>
-                              {r.pickup_address_detail && (
-                                <p className="text-[#6B7280] text-[11px] pt-1 border-t border-[#E5E7EB]/60 leading-normal break-words whitespace-pre-wrap min-w-0 w-full text-left">
-                                  Adres Detayı: {r.pickup_address_detail}
-                                </p>
-                              )}
-                            </div>
-                          )}
+                          <PickupAddressCard
+                            storeName={r.store_name}
+                            pickupAddress={r.pickup_address}
+                            pickupAddressDetail={r.pickup_address_detail}
+                            pickupLat={r.pickup_lat}
+                            pickupLng={r.pickup_lng}
+                          />
 
                           {/* 6. Teslim Adresi */}
                           {r.delivery_address && (
@@ -2604,46 +2926,24 @@ export function AsistanPage() {
                           {/* 2. Yapılacak İş */}
                           <TaskDescriptionCard description={r.task_description} />
 
-                          {/* 3. Müşteri Teklifi */}
-                          <div className="bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E5E7EB] flex items-center justify-between text-xs">
-                            <div className="text-left">
-                              <div className="text-[10px] text-[#6B7280] font-bold uppercase tracking-wider">MÜŞTERİ TEKLİFİ</div>
-                              <div className="text-xs text-[#6B7280]">Müşterinin sunduğu teklif tutarı</div>
-                            </div>
-                            <div className="font-bold text-[#10B981] text-lg font-mono">
-                              {r.customer_price || order.total_price || r.courier_net || 0} TL
-                            </div>
-                          </div>
+                          {/* 3. Müşteri Teklifi & Asistan Hizmet Bedeli */}
+                          <CustomerOfferCard
+                            totalPrice={r.total_price}
+                            courierNet={r.courier_net}
+                            customerPrice={r.customer_price}
+                          />
 
                           {/* 4. Müşteri Bilgileri */}
                           <CustomerInfoCard name={r.customer_name} phone={r.customer_phone} />
 
                           {/* 5. Alınacak Adres */}
-                          {r.pickup_address && (
-                            <div className="bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E5E7EB] text-xs space-y-1.5 w-full min-w-0">
-                              <div className="flex items-center justify-between gap-2 min-w-0">
-                                <span className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider flex items-center gap-1 shrink-0">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
-                                  ALINACAK ADRES
-                                </span>
-                                <a
-                                  href={r.pickup_lat != null && r.pickup_lng != null ? `https://www.google.com/maps/search/?api=1&query=${r.pickup_lat},${r.pickup_lng}` : (r.latitude != null && r.longitude != null ? `https://www.google.com/maps/search/?api=1&query=${r.latitude},${r.longitude}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.pickup_address)}`)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-2.5 py-1 bg-white hover:bg-gray-50 text-[#1F2937] border border-[#E5E7EB] font-bold text-[10px] rounded-lg shadow-sm cursor-pointer transition-all shrink-0 ml-auto flex items-center gap-1"
-                                >
-                                  <ExternalLink className="w-3 h-3 text-[#6B7280]" />
-                                  <span>Haritada Aç</span>
-                                </a>
-                              </div>
-                              <p className="text-[#1F2937] text-xs font-medium leading-relaxed break-words whitespace-pre-wrap min-w-0 w-full text-left">{r.pickup_address}</p>
-                              {r.pickup_address_detail && (
-                                <p className="text-[#6B7280] text-[11px] pt-1 border-t border-[#E5E7EB]/60 leading-normal break-words whitespace-pre-wrap min-w-0 w-full text-left">
-                                  Adres Detayı: {r.pickup_address_detail}
-                                </p>
-                              )}
-                            </div>
-                          )}
+                          <PickupAddressCard
+                            storeName={r.store_name}
+                            pickupAddress={r.pickup_address}
+                            pickupAddressDetail={r.pickup_address_detail}
+                            pickupLat={r.pickup_lat}
+                            pickupLng={r.pickup_lng}
+                          />
 
                           {/* 6. Teslim Adresi */}
                           {r.delivery_address && (
