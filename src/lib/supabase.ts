@@ -270,6 +270,22 @@ export interface AssistantSubscription {
   updated_at?: string;
 }
 
+export interface PartnerSubscription {
+  id: string;
+  partner_id: string;
+  start_date?: string;
+  expires_at?: string;
+  period_days?: number; // 30, 90, 180, 365
+  price?: number;
+  status?: string; // 'pending' | 'active' | 'expired' | 'inactive' | 'rejected'
+  payment_status?: string; // 'pending' | 'paid' | 'unpaid'
+  renewal_requested?: boolean;
+  renewal_decision?: 'pending' | 'approved' | 'rejected' | string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Address {
   id: string;
   user_id: string;
@@ -1090,6 +1106,7 @@ export async function getExactTableColumns(tableName: string): Promise<string[]>
       ],
       assistants: ['id', 'user_id', 'status', 'full_name', 'email', 'phone', 'created_at', 'updated_at', 'notes', 'vehicle_type'],
       assistant_subscriptions: ['id', 'assistant_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'monthly_price', 'payment_status'],
+      partner_subscriptions: ['id', 'partner_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'period_days', 'price', 'payment_status', 'renewal_requested', 'renewal_decision'],
       notifications: ['id', 'user_id', 'title', 'created_at'],
       dispatch_offers: [
         'id', 'order_id', 'task_id', 'assistant_id', 'dispatch_session_id', 'status',
@@ -4386,6 +4403,136 @@ export const db = {
 
   async saveAdminUsers(users: AdminRoleUser[]): Promise<void> {
     setStored('ugra_virtual_admin_users', users);
+  },
+
+  // --- PARTNER SUBSCRIPTIONS SERVICE ---
+  async getPartnerSubscription(partnerId: string): Promise<PartnerSubscription | null> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('partner_subscriptions')
+          .select('*')
+          .eq('partner_id', partnerId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && data) return data as PartnerSubscription;
+      } catch (err) {
+        console.warn('Supabase getPartnerSubscription notice:', err);
+      }
+    }
+    const stored = getStored<PartnerSubscription>('ugra_virtual_partner_subscriptions');
+    const match = stored.find(s => s.partner_id === partnerId);
+    return match || null;
+  },
+
+  async getAllPartnerSubscriptions(): Promise<PartnerSubscription[]> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('partner_subscriptions')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && data) return data as PartnerSubscription[];
+      } catch (err) {
+        console.warn('Supabase getAllPartnerSubscriptions notice:', err);
+      }
+    }
+    return getStored<PartnerSubscription>('ugra_virtual_partner_subscriptions');
+  },
+
+  async requestPartnerSubscription(partnerId: string, periodDays: number = 30): Promise<PartnerSubscription | null> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data: rpcData, error: rpcError } = await client.rpc('request_partner_subscription', {
+          p_partner_id: partnerId,
+          p_period_days: periodDays
+        });
+
+        if (!rpcError && rpcData) {
+          return rpcData as PartnerSubscription;
+        }
+
+        const { data: existing } = await client
+          .from('partner_subscriptions')
+          .select('*')
+          .eq('partner_id', partnerId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const { data: updated } = await client
+            .from('partner_subscriptions')
+            .update({
+              period_days: periodDays,
+              renewal_requested: true,
+              renewal_decision: 'pending',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existing.id)
+            .select()
+            .maybeSingle();
+          if (updated) return updated as PartnerSubscription;
+        } else {
+          const { data: inserted } = await client
+            .from('partner_subscriptions')
+            .insert({
+              partner_id: partnerId,
+              period_days: periodDays,
+              status: 'pending',
+              payment_status: 'pending',
+              renewal_requested: true,
+              renewal_decision: 'pending',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            .maybeSingle();
+          if (inserted) return inserted as PartnerSubscription;
+        }
+      } catch (err) {
+        console.warn('Supabase requestPartnerSubscription notice:', err);
+      }
+    }
+
+    const stored = getStored<PartnerSubscription>('ugra_virtual_partner_subscriptions');
+    const existingIndex = stored.findIndex(s => s.partner_id === partnerId);
+    let sub: PartnerSubscription;
+    if (existingIndex !== -1) {
+      sub = {
+        ...stored[existingIndex],
+        period_days: periodDays,
+        renewal_requested: true,
+        renewal_decision: 'pending',
+        updated_at: new Date().toISOString()
+      };
+      stored[existingIndex] = sub;
+    } else {
+      sub = {
+        id: `psub_${Date.now()}`,
+        partner_id: partnerId,
+        period_days: periodDays,
+        status: 'pending',
+        payment_status: 'pending',
+        renewal_requested: true,
+        renewal_decision: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      stored.unshift(sub);
+    }
+    setStored('ugra_virtual_partner_subscriptions', stored);
+    return sub;
+  },
+
+  async savePartnerSubscriptions(subscriptions: PartnerSubscription[]): Promise<void> {
+    setStored('ugra_virtual_partner_subscriptions', subscriptions);
   }
 };
 

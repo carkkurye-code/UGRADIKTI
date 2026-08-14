@@ -21,6 +21,7 @@ import {
 import { AdminDashboardTab } from '@/components/admin/AdminDashboardTab';
 import { useModalBackButton } from '@/hooks/useModalBackButton';
 import { AdminPartnersTab } from '@/components/admin/AdminPartnersTab';
+import { AdminPartnerSubscriptionsTab } from '@/components/admin/AdminPartnerSubscriptionsTab';
 import { AdminPartnerAppsTab } from '@/components/admin/AdminPartnerAppsTab';
 import { AdminAssistantsTab } from '@/components/admin/AdminAssistantsTab';
 import { AdminAssistantSubscriptionsTab } from '@/components/admin/AdminAssistantSubscriptionsTab';
@@ -412,6 +413,7 @@ export function AdminPanel() {
   const adminNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Shield },
     { id: 'partners', label: 'Partner Mağazalar', icon: Building },
+    { id: 'partner_subscriptions', label: 'PARTNER KİRALAMA', icon: Calendar },
     { id: 'applications', label: 'Partner Başvuruları', icon: ClipboardList, badge: pendingPartnerApps.length },
     { id: 'assistants', label: 'Asistan Kuryeler', icon: Bike },
     { id: 'assistant_subscriptions', label: 'ASİSTAN KİRALAMA', icon: Calendar },
@@ -588,6 +590,14 @@ export function AdminPanel() {
             orders={orders}
             onRefresh={handleRefresh}
             setPartners={setPartners}
+          />
+        )}
+
+        {/* 2.5 PARTNER SUBSCRIPTIONS */}
+        {activeTab === 'partner_subscriptions' && (
+          <AdminPartnerSubscriptionsTab
+            partners={partners}
+            onRefresh={handleRefresh}
           />
         )}
 

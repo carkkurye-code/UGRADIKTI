@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useModalBackButton } from '@/hooks/useModalBackButton';
 
 import { PartnerOperatingHeader } from '@/components/partner/PartnerOperatingHeader';
+import { PartnerSubscriptionTab } from '@/components/partner/PartnerSubscriptionTab';
 import { PartnerOverviewTab } from '@/components/partner/PartnerOverviewTab';
 import { PartnerProductsTab } from '@/components/partner/PartnerProductsTab';
 import { PartnerReviewsTab } from '@/components/partner/PartnerReviewsTab';
@@ -1667,6 +1668,7 @@ export function PartnerDashboard() {
   // LOGGED IN DASHBOARD VIEW
   const partnerNavItems = [
     { id: 'dashboard', label: 'Genel Bakış', icon: Layers },
+    { id: 'subscription', label: 'Kiralama / Lisans', icon: Calendar },
     { id: 'products', label: 'Ürün Yönetimi', icon: Package, badge: products.length },
     { id: 'orders', label: 'Sipariş Yönetimi', icon: ShoppingBag, badge: unreadOrdersCount > 0 ? unreadOrdersCount : undefined },
     { id: 'reviews', label: 'Müşteri Yorumları', icon: MessageSquare, badge: reviews.length },
@@ -1893,6 +1895,14 @@ export function PartnerDashboard() {
               if (ord) setOrderDetailModal(ord);
             }}
             onNavigateTab={setActiveTab}
+          />
+        )}
+
+        {/* 1.5 SUBSCRIPTION TAB */}
+        {activeTab === 'subscription' && (
+          <PartnerSubscriptionTab
+            partner={partner}
+            onRefreshPartner={handleRefresh}
           />
         )}
 
