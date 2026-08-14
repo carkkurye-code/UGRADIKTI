@@ -3,6 +3,9 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 export interface PricingSettings {
   id?: string;
   active?: boolean;
+  city_id?: string | null;
+  franchise_id?: string | null;
+  is_global?: boolean;
   immediate_customer_price?: number;
   immediate_courier_net?: number;
   passing_customer_price?: number;

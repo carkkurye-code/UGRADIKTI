@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building, Check, X, Phone, Mail, FileText, Eye, ShieldAlert, Trash2, 
-  Search, ExternalLink, MessageSquare, AlertCircle, CheckCircle2, FileCheck
+  Search, ExternalLink, MessageSquare, AlertCircle, CheckCircle2, FileCheck, MapPin
 } from 'lucide-react';
-import { Partner, db, normalizeCategory, getCategoryDefaultImage } from '@/lib/supabase';
+import { Partner, db, normalizeCategory, getCategoryDefaultImage, City, Franchise } from '@/lib/supabase';
 import { ConfirmModal } from './ConfirmModal';
 
 interface AdminPartnerAppsTabProps {
@@ -46,6 +46,40 @@ export const AdminPartnerAppsTab: React.FC<AdminPartnerAppsTabProps> = ({
   const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
   const [viewingApp, setViewingApp] = useState<Partner | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
+  const [cities, setCities] = useState<City[]>([]);
+  const [franchises, setFranchises] = useState<Franchise[]>([]);
+
+  useEffect(() => {
+    const loadMetadata = async () => {
+      try {
+        const [cList, fList] = await Promise.all([
+          db.getCities(),
+          db.getFranchises()
+        ]);
+        setCities(cList || []);
+        setFranchises(fList || []);
+      } catch (err) {
+        console.warn('Error loading cities/franchises in partner admin tab:', err);
+      }
+    };
+    loadMetadata();
+  }, []);
+
+  const getCityName = (cityId?: string | null, fallbackCity?: string | null) => {
+    if (cityId) {
+      const match = cities.find(c => c.id === cityId);
+      if (match) return match.name;
+    }
+    return fallbackCity || null;
+  };
+
+  const getFranchiseName = (franchiseId?: string | null) => {
+    if (franchiseId) {
+      const match = franchises.find(f => f.id === franchiseId);
+      if (match) return match.name;
+    }
+    return null;
+  };
 
   // Reject Reason Modal
   const [rejectingPartner, setRejectingPartner] = useState<Partner | null>(null);
@@ -258,6 +292,18 @@ export const AdminPartnerAppsTab: React.FC<AdminPartnerAppsTabProps> = ({
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-100 text-[#374151] border border-gray-200">
                         {app.category ? normalizeCategory(app.category) : (normalizeCategory(app.business_name) || 'Diğer')}
                       </span>
+                      {getCityName(app.city_id, app.city) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 border border-gray-200 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-gray-500" />
+                          {getCityName(app.city_id, app.city)}
+                        </span>
+                      )}
+                      {getFranchiseName(app.franchise_id) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                          <Building className="w-3 h-3 text-emerald-600" />
+                          {getFranchiseName(app.franchise_id)}
+                        </span>
+                      )}
                     </h3>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-[#6B7280] mt-0.5">
                       <span className="font-mono text-[11px]">ugra.app/{app.slug}</span>
@@ -359,6 +405,10 @@ export const AdminPartnerAppsTab: React.FC<AdminPartnerAppsTabProps> = ({
               <div className="p-4 bg-[#F8FAFC] border border-[#E5E7EB] rounded-xl space-y-2">
                 <div className="font-bold text-[#1F2937] text-sm">İşletme Bilgileri</div>
                 <div><span className="text-[#6B7280] font-medium">Kategori:</span> <span className="font-semibold text-[#1F2937]">{viewingApp.category}</span></div>
+                <div><span className="text-[#6B7280] font-medium">Şehir:</span> <span className="font-semibold text-[#1F2937]">{getCityName(viewingApp.city_id, viewingApp.city) || 'Belirtilmemiş'}</span></div>
+                {viewingApp.franchise_id && (
+                  <div><span className="text-[#6B7280] font-medium">Bayi:</span> <span className="font-semibold text-emerald-700">{getFranchiseName(viewingApp.franchise_id) || viewingApp.franchise_id}</span></div>
+                )}
                 <div><span className="text-[#6B7280] font-medium">Telefon:</span> <span className="font-semibold text-[#1F2937] font-mono">{viewingApp.phone}</span></div>
                 <div><span className="text-[#6B7280] font-medium">E-posta:</span> <span className="font-semibold text-[#1F2937]">{viewingApp.email || 'Yok'}</span></div>
                 <div><span className="text-[#6B7280] font-medium">Adres:</span> <span className="font-semibold text-[#1F2937]">{viewingApp.address}</span></div>

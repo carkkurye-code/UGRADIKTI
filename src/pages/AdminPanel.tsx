@@ -11,7 +11,7 @@ import {
   db, isSupabaseConfigured, supabaseAdmin, saveSupabaseCredentials, clearSupabaseCredentials, 
   supabaseUrl, supabaseAnonKey, Partner, Product, Order, SupportTicket, 
   AssistantApplication, Assistant, CategoryItem, Banner, Campaign, 
-  CouponItem, ReviewItem, AdminRoleUser, PARTNER_CATEGORIES, OFFICIAL_PARTNER_CATEGORIES 
+  CouponItem, ReviewItem, AdminRoleUser, City, Franchise, PARTNER_CATEGORIES, OFFICIAL_PARTNER_CATEGORIES 
 } from '@/lib/supabase';
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, 
@@ -34,6 +34,7 @@ import { AdminBannersTab } from '@/components/admin/AdminBannersTab';
 import { AdminReviewsTab } from '@/components/admin/AdminReviewsTab';
 import { AdminFinanceTab } from '@/components/admin/AdminFinanceTab';
 import { AdminPricingTab } from '@/components/admin/AdminPricingTab';
+import { AdminFranchisesTab } from '@/components/admin/AdminFranchisesTab';
 import { AdminNotificationsTab } from '@/components/admin/AdminNotificationsTab';
 import { AdminRolesTab } from '@/components/admin/AdminRolesTab';
 
@@ -69,6 +70,8 @@ export function AdminPanel() {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminRoleUser[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [franchises, setFranchises] = useState<Franchise[]>([]);
 
   // Action labels mapping
   const actionLabels: Record<string, string> = {
@@ -179,6 +182,12 @@ export function AdminPanel() {
 
       const tkts = await db.getSupportTickets();
       setSupportTickets(tkts || []);
+
+      const cts = await db.getCities();
+      setCities(cts || []);
+
+      const frns = await db.getFranchises();
+      setFranchises(frns || []);
     } catch (err) {
       console.error('Error loading admin data:', err);
     } finally {
@@ -409,29 +418,56 @@ export function AdminPanel() {
     );
   }
 
-  // ADMIN DASHBOARD LAYOUT
-  const adminNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Shield },
-    { id: 'partners', label: 'Partner Mağazalar', icon: Building },
-    { id: 'partner_subscriptions', label: 'PARTNER KİRALAMA', icon: Calendar },
-    { id: 'applications', label: 'Partner Başvuruları', icon: ClipboardList, badge: pendingPartnerApps.length },
-    { id: 'assistants', label: 'Asistan Kuryeler', icon: Bike },
-    { id: 'assistant_subscriptions', label: 'ASİSTAN KİRALAMA', icon: Calendar },
-    { id: 'assistant_applications', label: 'Asistan Başvuruları', icon: ClipboardList, badge: pendingAssistantApps.length },
-    { id: 'products', label: 'Ürün Yönetimi', icon: Package },
-    { id: 'orders', label: 'Sipariş Takibi', icon: ShoppingBag },
-    { id: 'customers', label: 'Müşteri Yönetimi', icon: Users },
-    { id: 'categories', label: 'Kategoriler', icon: Layers },
-    { id: 'banners', label: 'Banner & Kampanyalar', icon: ImageIcon },
-    { id: 'tickets', label: 'Destek Talepleri', icon: HelpCircle, badge: supportTickets.filter(t => t.status === 'acik').length },
-    { id: 'reviews', label: 'Yorum & Değerlendirme', icon: Star },
-    { id: 'finance', label: 'Finans & Hakediş', icon: DollarSign },
-    { id: 'pricing', label: 'Fiyatlandırma', icon: Calculator },
-    { id: 'notifications', label: 'Push Bildirim Gönder', icon: Bell },
-    { id: 'reports', label: 'Raporlar & Analiz', icon: BarChart3 },
-    { id: 'roles', label: 'Rol & İzin Yönetimi', icon: ShieldCheck },
-    { id: 'settings', label: 'Sistem Ayarları', icon: Settings },
+  // ADMIN DASHBOARD GROUPED NAVIGATION LAYOUT
+  const adminNavGroups = [
+    {
+      group: 'OPERASYON',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: Shield },
+        { id: 'orders', label: 'Sipariş & Görev Takibi', icon: ShoppingBag, badge: orders.filter(o => o.status === 'beklemede' || o.status === 'bekliyor').length },
+      ]
+    },
+    {
+      group: 'MAĞAZA YÖNETİMİ',
+      items: [
+        { id: 'partners', label: 'Partner Mağazalar', icon: Building },
+        { id: 'applications', label: 'Partner Başvuruları', icon: ClipboardList, badge: pendingPartnerApps.length },
+        { id: 'partner_subscriptions', label: 'Partner Kiralama', icon: Calendar },
+      ]
+    },
+    {
+      group: 'KURYE / ASİSTAN YÖNETİMİ',
+      items: [
+        { id: 'assistants', label: 'Asistan Kuryeler', icon: Bike },
+        { id: 'assistant_applications', label: 'Asistan Başvuruları', icon: ClipboardList, badge: pendingAssistantApps.length },
+        { id: 'assistant_subscriptions', label: 'Asistan Kiralama', icon: Calendar },
+      ]
+    },
+    {
+      group: 'İÇERİK',
+      items: [
+        { id: 'categories', label: 'Kategoriler', icon: Layers },
+        { id: 'products', label: 'Ürünler', icon: Package },
+        { id: 'banners', label: 'Banner & Kampanyalar', icon: ImageIcon },
+        { id: 'reviews', label: 'Yorum & Değerlendirme', icon: Star },
+      ]
+    },
+    {
+      group: 'YÖNETİM',
+      items: [
+        { id: 'franchises', label: 'Şehir & Bayi Yönetimi', icon: MapPin },
+        { id: 'customers', label: 'Müşteriler', icon: Users },
+        { id: 'finance', label: 'Finans & Hakediş', icon: DollarSign },
+        { id: 'pricing', label: 'Fiyatlandırma', icon: Calculator },
+        { id: 'tickets', label: 'Destek Talepleri', icon: HelpCircle, badge: supportTickets.filter(t => t.status === 'acik').length },
+        { id: 'notifications', label: 'Bildirimler', icon: Bell },
+        { id: 'roles', label: 'Roller & İzinler', icon: ShieldCheck },
+        { id: 'settings', label: 'Sistem Ayarları', icon: Settings },
+      ]
+    }
   ];
+
+  const allNavItems = adminNavGroups.flatMap(g => g.items);
 
   return (
     <div className="min-h-screen bg-[#F7F7F8] text-[#111111] flex flex-col md:flex-row font-sans">
@@ -473,7 +509,7 @@ export function AdminPanel() {
 
         {/* Horizontal Scrollable Tabs on Mobile */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar scroll-smooth">
-          {adminNavItems.map(item => {
+          {allNavItems.map(item => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
@@ -482,14 +518,14 @@ export function AdminPanel() {
                 onClick={() => setActiveTab(item.id)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                   isActive 
-                    ? 'bg-[#F2F2F3] text-[#111111] border border-[#E5E7EB] shadow-sm' 
+                    ? 'bg-[#111111] text-white shadow-sm' 
                     : 'bg-white text-[#666666] hover:text-[#111111] border border-[#E5E7EB]'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{item.label}</span>
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isActive ? 'bg-[#111111] text-white' : 'bg-gray-100 text-[#111111]'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isActive ? 'bg-white text-[#111111]' : 'bg-gray-100 text-[#111111]'}`}>
                     {item.badge}
                   </span>
                 )}
@@ -510,7 +546,7 @@ export function AdminPanel() {
               <div className="font-extrabold text-sm text-[#111111] flex items-center gap-0.5">
                 UĞRA<span className="text-[#111111]">.</span> Admin
               </div>
-              <div className="text-[10px] text-[#666666] font-medium">v2.4.1 Operasyon</div>
+              <div className="text-[10px] text-[#666666] font-medium">Yönetim & Lisans Merkezi</div>
             </div>
           </div>
           <Link href="/" aria-label="Kapat" title="Kapat">
@@ -525,33 +561,42 @@ export function AdminPanel() {
           </Link>
         </div>
 
-        {/* NAV LIST */}
-        <nav className="p-3 space-y-1 overflow-y-auto flex-1">
-          {adminNavItems.map(item => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  isActive 
-                    ? 'bg-[#F2F2F3] text-[#111111] border border-[#E5E7EB] shadow-sm' 
-                    : 'text-[#666666] hover:text-[#111111] hover:bg-[#F2F2F3] border border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon className="w-4 h-4 text-[#666666]" />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isActive ? 'bg-[#111111] text-white' : 'bg-gray-100 text-[#111111]'}`}>
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* NAV LIST BY GROUP */}
+        <nav className="p-3 space-y-4 overflow-y-auto flex-1">
+          {adminNavGroups.map((group, gIdx) => (
+            <div key={gIdx} className="space-y-1">
+              <div className="px-3 text-[10px] font-extrabold tracking-wider text-[#8A8A8A] uppercase">
+                {group.group}
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map(item => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        isActive 
+                          ? 'bg-[#111111] text-white shadow-sm' 
+                          : 'text-[#666666] hover:text-[#111111] hover:bg-[#F7F7F8] border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#666666]'}`} />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge !== undefined && item.badge > 0 && (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isActive ? 'bg-white text-[#111111]' : 'bg-gray-100 text-[#111111]'}`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* FOOTER INFO & LOGOUT */}
@@ -845,6 +890,17 @@ export function AdminPanel() {
             adminUsers={adminUsers}
             onRefresh={handleRefresh}
             setAdminUsers={setAdminUsers}
+          />
+        )}
+
+        {/* 17.5 ŞEHİR & BAYİ YÖNETİMİ */}
+        {activeTab === 'franchises' && (
+          <AdminFranchisesTab
+            cities={cities}
+            franchises={franchises}
+            onRefresh={handleRefresh}
+            setCities={setCities}
+            setFranchises={setFranchises}
           />
         )}
 

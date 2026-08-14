@@ -3,7 +3,7 @@ import { useLocation, Link } from 'wouter';
 import { 
   db, isSupabaseConfigured, supabase, supabasePartner, getActiveSupabaseClient, Partner, Product, ProductAttributes, Order, SupportTicket, 
   ReviewItem, Campaign, NotificationLog, OFFICIAL_PARTNER_CATEGORIES, normalizeCategory,
-  ensurePartnerInDatabase, isUUID 
+  ensurePartnerInDatabase, isUUID, City, Franchise, resolveFranchiseForCity 
 } from '@/lib/supabase';
 import { 
   ShoppingBag, Package, Settings, LogOut, Plus, Edit, Trash2, Check, X, 
@@ -294,11 +294,73 @@ export function PartnerDashboard() {
   const [phone, setPhone] = useState('');
   const [slug, setSlug] = useState('');
   const [signupCategory, setSignupCategory] = useState(OFFICIAL_PARTNER_CATEGORIES[0] || 'Kahve');
+  const [selectedCityId, setSelectedCityId] = useState('');
+  const [selectedCityName, setSelectedCityName] = useState('');
+  const [selectedFranchiseId, setSelectedFranchiseId] = useState('');
+  const [activeCities, setActiveCities] = useState<City[]>([]);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [cityResolution, setCityResolution] = useState<{
+    count: number;
+    franchiseId: string | null;
+    franchise: Franchise | null;
+    franchises: Franchise[];
+  }>({ count: 0, franchiseId: null, franchise: null, franchises: [] });
+  const [cityResolving, setCityResolving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Load active cities for partner registration
+  useEffect(() => {
+    let isMounted = true;
+    const fetchActiveCities = async () => {
+      setLoadingCities(true);
+      try {
+        const cts = await db.getActiveCities();
+        if (isMounted) {
+          setActiveCities(cts || []);
+        }
+      } catch (err) {
+        console.error('Error fetching active cities for partner registration:', err);
+      } finally {
+        if (isMounted) setLoadingCities(false);
+      }
+    };
+    fetchActiveCities();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handlePartnerCityChange = async (cityId: string) => {
+    const selectedCity = activeCities.find(c => c.id === cityId);
+    const cityName = selectedCity ? selectedCity.name : '';
+    
+    setSelectedCityId(cityId);
+    setSelectedCityName(cityName);
+    setSelectedFranchiseId('');
+
+    if (!cityId) {
+      setCityResolution({ count: 0, franchiseId: null, franchise: null, franchises: [] });
+      return;
+    }
+
+    setCityResolving(true);
+    try {
+      const resolution = await resolveFranchiseForCity(cityId);
+      setCityResolution(resolution);
+      if (resolution.count === 1 && resolution.franchiseId) {
+        setSelectedFranchiseId(resolution.franchiseId || '');
+      }
+    } catch (err) {
+      console.error('Error resolving franchise for city:', err);
+      setCityResolution({ count: 0, franchiseId: null, franchise: null, franchises: [] });
+    } finally {
+      setCityResolving(false);
+    }
+  };
 
   useEffect(() => {
     if (authMode === 'signup') {
@@ -327,7 +389,18 @@ export function PartnerDashboard() {
         if (password.length < 6) {
           throw new Error('Şifre en az 6 karakter olmalıdır.');
         }
-        await db.signUp(email, password, businessName, slug, signupCategory, phone);
+        if (!selectedCityId) {
+          throw new Error('Lütfen işletmenizin bulunduğu şehri seçiniz.');
+        }
+        if (cityResolution.count === 0) {
+          throw new Error('Seçilen şehirde henüz aktif operasyon/bayi bulunmadığı için başvuru kabul edilememektedir.');
+        }
+        if (cityResolution.count > 1 && !selectedFranchiseId) {
+          throw new Error('Lütfen bağlı bulunacağınız bayiyi seçiniz.');
+        }
+
+        const finalFranchiseId = selectedFranchiseId || cityResolution.franchiseId || null;
+        await db.signUp(email, password, businessName, slug, signupCategory, phone, selectedCityId, finalFranchiseId, selectedCityName);
         setAuthSuccessMessage('Başvurunuz başarıyla alındı! Yönetici onayından sonra giriş yapabilirsiniz.');
         setAuthMode('login');
         setPassword('');
@@ -1583,6 +1656,57 @@ export function PartnerDashboard() {
                     className="w-full bg-white/[0.02] border border-white/5 focus:border-primary/50 outline-none rounded-xl py-3 px-4 text-sm text-foreground"
                   />
                 </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">
+                    Bulunduğunuz Şehir <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={selectedCityId}
+                    required
+                    onChange={(e) => handlePartnerCityChange(e.target.value)}
+                    disabled={loadingCities}
+                    className="w-full bg-[#18181B] border border-white/10 rounded-xl py-3 px-4 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="">{loadingCities ? 'Şehirler yükleniyor...' : 'Şehir Seçiniz'}</option>
+                    {activeCities.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCityId && !cityResolving && cityResolution.count === 0 && (
+                    <p className="text-xs text-red-400 font-medium mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" /> Bu şehirde henüz aktif operasyon bulunmamaktadır.
+                    </p>
+                  )}
+                  {selectedCityId && !cityResolving && cityResolution.count === 1 && (
+                    <p className="text-xs text-emerald-400 font-medium mt-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Bayi: {cityResolution.franchises[0]?.name} (Otomatik Eşleşti)
+                    </p>
+                  )}
+                </div>
+
+                {selectedCityId && cityResolution.count > 1 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase">
+                      Bağlı Olacağınız Bayi / Bölge <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={selectedFranchiseId}
+                      required
+                      onChange={(e) => setSelectedFranchiseId(e.target.value)}
+                      className="w-full bg-[#18181B] border border-white/10 rounded-xl py-3 px-4 text-sm text-foreground focus:border-primary focus:outline-none"
+                    >
+                      <option value="">Bayi Seçiniz</option>
+                      {cityResolution.franchises.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground uppercase">Mağaza Adresi (URL Slug)</label>

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { User as SupabaseUser } from '@supabase/supabase-js';
-import { supabase, supabaseAssistant, isSupabaseConfigured, db, Assistant, Order, Partner, isUUID, toUUID, getExactTableColumns, filterPayloadByValidColumns, filterTaskPayload, filterOrderPayload } from '@/lib/supabase';
+import { supabase, supabaseAssistant, isSupabaseConfigured, db, Assistant, Order, Partner, City, Franchise, resolveFranchiseForCity, isUUID, toUUID, getExactTableColumns, filterPayloadByValidColumns, filterTaskPayload, filterOrderPayload } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { playNotificationSound, showBrowserNotification } from '@/lib/soundUtils';
 import { LiveDispatchService } from '@/lib/dispatchService';
@@ -22,6 +22,8 @@ interface ApplicationFormData {
   email: string;
   password: string;
   city: string;
+  cityId: string;
+  franchiseId: string;
   motorInfo: string;
   licenseInfo: string;
   experience: string;
@@ -35,6 +37,8 @@ const initialFormData: ApplicationFormData = {
   email: '',
   password: '',
   city: '',
+  cityId: '',
+  franchiseId: '',
   motorInfo: '',
   licenseInfo: '',
   experience: '',
@@ -1152,6 +1156,37 @@ export function AsistanPage() {
   const [stage, setStage] = useState<'form' | 'success'>('form');
   const [formData, setFormData] = useState<ApplicationFormData>(initialFormData);
   const [isSubmittingApp, setIsSubmittingApp] = useState(false);
+  const [activeCities, setActiveCities] = useState<City[]>([]);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [cityResolution, setCityResolution] = useState<{
+    count: number;
+    franchiseId: string | null;
+    franchise: Franchise | null;
+    franchises: Franchise[];
+  }>({ count: 0, franchiseId: null, franchise: null, franchises: [] });
+  const [cityResolving, setCityResolving] = useState(false);
+
+  // Load active cities for candidate application
+  useEffect(() => {
+    let isMounted = true;
+    const fetchActiveCities = async () => {
+      setLoadingCities(true);
+      try {
+        const cts = await db.getActiveCities();
+        if (isMounted) {
+          setActiveCities(cts || []);
+        }
+      } catch (err) {
+        console.error('Error fetching active cities for assistant registration:', err);
+      } finally {
+        if (isMounted) setLoadingCities(false);
+      }
+    };
+    fetchActiveCities();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // 1. Initialize Supabase Session & Listen to Auth Changes
   const checkAndInitSession = useCallback(async () => {
@@ -2590,6 +2625,37 @@ export function AsistanPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleCityChange = async (cityId: string) => {
+    const selectedCity = activeCities.find(c => c.id === cityId);
+    const cityName = selectedCity ? selectedCity.name : '';
+    
+    setFormData(prev => ({
+      ...prev,
+      cityId,
+      city: cityName,
+      franchiseId: ''
+    }));
+
+    if (!cityId) {
+      setCityResolution({ count: 0, franchiseId: null, franchise: null, franchises: [] });
+      return;
+    }
+
+    setCityResolving(true);
+    try {
+      const resolution = await resolveFranchiseForCity(cityId);
+      setCityResolution(resolution);
+      if (resolution.count === 1 && resolution.franchiseId) {
+        setFormData(prev => ({ ...prev, franchiseId: resolution.franchiseId || '' }));
+      }
+    } catch (err) {
+      console.error('Error resolving franchise for city:', err);
+      setCityResolution({ count: 0, franchiseId: null, franchise: null, franchises: [] });
+    } finally {
+      setCityResolving(false);
+    }
+  };
+
   const handleAppSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.email.trim() || !formData.password.trim()) {
@@ -2600,13 +2666,45 @@ export function AsistanPage() {
       });
       return;
     }
+
+    if (!formData.cityId) {
+      toast({
+        title: 'Eksik Bilgi',
+        description: 'Lütfen çalışmak istediğiniz şehri seçiniz.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (cityResolution.count === 0) {
+      toast({
+        title: 'Hizmet Verilemiyor',
+        description: 'Seçilen şehirde henüz aktif bayi bulunmadığı için başvuru kabul edilememektedir.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (cityResolution.count > 1 && !formData.franchiseId) {
+      toast({
+        title: 'Eksik Bilgi',
+        description: 'Lütfen çalışmak istediğiniz bayiyi seçiniz.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSubmittingApp(true);
     try {
       await db.createAssistantApplication({
         full_name: formData.fullName,
         phone: formData.phone,
         email: formData.email,
+        password: formData.password,
         vehicle_type: vehicleType,
+        city_id: formData.cityId,
+        franchise_id: formData.franchiseId || cityResolution.franchiseId || null,
+        city: formData.city
       });
 
       toast({
@@ -3647,33 +3745,91 @@ export function AsistanPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <div>
                         <label className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block mb-2">
-                          Çalışmak İstediğiniz Şehir
+                          Çalışmak İstediğiniz Şehir <span className="text-[#EF4444]">*</span>
                         </label>
-                        <input
-                          type="text"
-                          name="city"
+                        <select
+                          name="cityId"
                           required
-                          value={formData.city}
-                          onChange={handleAppInputChange}
-                          placeholder="Örn: İstanbul"
-                          className="w-full bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm text-[#111827] placeholder:text-gray-400 focus:outline-none focus:border-[#2563EB]"
-                        />
+                          value={formData.cityId}
+                          onChange={(e) => handleCityChange(e.target.value)}
+                          disabled={loadingCities}
+                          className="w-full bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm text-[#111827] focus:outline-none focus:border-[#2563EB]"
+                        >
+                          <option value="">{loadingCities ? 'Şehirler yükleniyor...' : 'Şehir Seçiniz'}</option>
+                          {activeCities.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        {formData.cityId && !cityResolving && cityResolution.count === 0 && (
+                          <p className="text-xs text-red-600 font-medium mt-1.5 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5" /> Bu şehirde şu anda aktif operasyon bulunmamaktadır.
+                          </p>
+                        )}
+                        {formData.cityId && !cityResolving && cityResolution.count === 1 && (
+                          <p className="text-xs text-emerald-600 font-medium mt-1.5 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Bayi: {cityResolution.franchises[0]?.name} (Otomatik Eşleşti)
+                          </p>
+                        )}
                       </div>
-                      <div>
-                        <label className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block mb-2">
-                          {vehicleType === 'bisiklet' ? 'Bisiklet Marka / Model' : 'Motosiklet Marka / Model'}
-                        </label>
-                        <input
-                          type="text"
-                          name="motorInfo"
-                          required
-                          value={formData.motorInfo}
-                          onChange={handleAppInputChange}
-                          placeholder={vehicleType === 'bisiklet' ? 'Örn: Trek FX 3' : 'Örn: Honda Forza 250'}
-                          className="w-full bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm text-[#111827] placeholder:text-gray-400 focus:outline-none focus:border-[#2563EB]"
-                        />
-                      </div>
+
+                      {formData.cityId && cityResolution.count > 1 ? (
+                        <div>
+                          <label className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block mb-2">
+                            Çalışmak İstediğiniz Bayi / Bölge <span className="text-[#EF4444]">*</span>
+                          </label>
+                          <select
+                            name="franchiseId"
+                            required
+                            value={formData.franchiseId}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, franchiseId: e.target.value }))}
+                            className="w-full bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm text-[#111827] focus:outline-none focus:border-[#2563EB]"
+                          >
+                            <option value="">Bayi Seçiniz</option>
+                            {cityResolution.franchises.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block mb-2">
+                            {vehicleType === 'bisiklet' ? 'Bisiklet Marka / Model' : 'Motosiklet Marka / Model'}
+                          </label>
+                          <input
+                            type="text"
+                            name="motorInfo"
+                            required
+                            value={formData.motorInfo}
+                            onChange={handleAppInputChange}
+                            placeholder={vehicleType === 'bisiklet' ? 'Örn: Trek FX 3' : 'Örn: Honda Forza 250'}
+                            className="w-full bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm text-[#111827] placeholder:text-gray-400 focus:outline-none focus:border-[#2563EB]"
+                          />
+                        </div>
+                      )}
                     </div>
+
+                    {formData.cityId && cityResolution.count > 1 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                          <label className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block mb-2">
+                            {vehicleType === 'bisiklet' ? 'Bisiklet Marka / Model' : 'Motosiklet Marka / Model'}
+                          </label>
+                          <input
+                            type="text"
+                            name="motorInfo"
+                            required
+                            value={formData.motorInfo}
+                            onChange={handleAppInputChange}
+                            placeholder={vehicleType === 'bisiklet' ? 'Örn: Trek FX 3' : 'Örn: Honda Forza 250'}
+                            className="w-full bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl px-4 py-3 text-sm text-[#111827] placeholder:text-gray-400 focus:outline-none focus:border-[#2563EB]"
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     <div className={`grid grid-cols-1 ${vehicleType === 'motosiklet' ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-5`}>
                       {vehicleType === 'motosiklet' && (

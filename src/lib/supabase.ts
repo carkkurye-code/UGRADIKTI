@@ -203,6 +203,34 @@ export const toUUID = (str: string): string => {
 // ==========================================
 // TYPES
 // ==========================================
+export type AdminScope = 'global' | 'city' | 'franchise';
+
+export interface City {
+  id: string;
+  name: string;
+  plate_code: number;
+  center_lat?: number | null;
+  center_lng?: number | null;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface Franchise {
+  id: string;
+  city_id: string;
+  city_name?: string;
+  name: string;
+  company_title?: string | null;
+  authorized_person?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  status: 'active' | 'suspended' | 'passive';
+  revenue_share_percentage?: number;
+  districts_covered?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -234,6 +262,8 @@ export interface Assistant {
   id: string;
   user_id?: string | null;
   partner_id?: string | null;
+  city_id?: string | null;
+  franchise_id?: string | null;
   full_name: string;
   phone: string;
   email?: string;
@@ -259,6 +289,8 @@ export interface Assistant {
 export interface AssistantSubscription {
   id: string;
   assistant_id: string;
+  city_id?: string | null;
+  franchise_id?: string | null;
   start_date?: string;
   expires_at?: string;
   monthly_price?: number;
@@ -273,6 +305,8 @@ export interface AssistantSubscription {
 export interface PartnerSubscription {
   id: string;
   partner_id: string;
+  city_id?: string | null;
+  franchise_id?: string | null;
   start_date?: string;
   expires_at?: string;
   period_days?: number; // 30, 90, 180, 365
@@ -353,12 +387,15 @@ export interface Partner {
   id: string;
   slug: string;
   business_name: string;
+  city_id?: string | null;
+  franchise_id?: string | null;
   email?: string;
   logo?: string;
   cover_image?: string;
   description?: string;
   phone?: string;
   address?: string;
+  city?: string;
   category?: string;
   active: boolean;
   created_at: string;
@@ -785,6 +822,8 @@ export interface Order {
   customer_id?: string;
   assistant_id?: string;
   assistant_iban?: string;
+  city_id?: string | null;
+  franchise_id?: string | null;
   customer_name: string;
   customer_phone: string;
   customer_address: string;
@@ -949,6 +988,9 @@ export interface AdminRoleUser {
   name: string;
   email: string;
   role: 'super_admin' | 'admin' | 'operasyon' | 'destek' | 'finans' | 'pazarlama';
+  scope?: AdminScope;
+  city_id?: string | null;
+  franchise_id?: string | null;
   active: boolean;
   created_at: string;
   last_login?: string;
@@ -962,7 +1004,10 @@ export const LOCAL_STORAGE_KEYS = {
   PRODUCTS: 'ugra_virtual_products',
   ORDERS: 'ugra_virtual_orders',
   PROFILES: 'ugra_virtual_profiles',
-  SESSION: 'ugra_virtual_session'
+  SESSION: 'ugra_virtual_session',
+  CITIES: 'ugra_virtual_cities',
+  FRANCHISES: 'ugra_virtual_franchises',
+  ASSISTANTS: 'ugra_virtual_assistants'
 };
 
 const inMemoryStore = new Map<string, string>();
@@ -1083,7 +1128,9 @@ export async function getExactTableColumns(tableName: string): Promise<string[]>
 
     // 3. Complete candidate column mappings as final fallback
     const fallbackCandidateMap: Record<string, string[]> = {
-      partners: ['id', 'user_id', 'status', 'business_name', 'slug', 'email', 'phone', 'category', 'description', 'logo', 'address', 'active', 'created_at'],
+      cities: ['id', 'name', 'plate_code', 'center_lat', 'center_lng', 'is_active', 'created_at'],
+      franchises: ['id', 'city_id', 'name', 'company_title', 'authorized_person', 'phone', 'email', 'status', 'revenue_share_percentage', 'districts_covered', 'created_at', 'updated_at'],
+      partners: ['id', 'user_id', 'status', 'business_name', 'slug', 'email', 'phone', 'category', 'description', 'logo', 'address', 'city', 'active', 'created_at', 'city_id', 'franchise_id'],
       profiles: ['id', 'partner_id', 'assistant_id', 'full_name', 'email', 'phone', 'is_admin', 'avatar_url', 'role', 'created_at', 'updated_at'],
       products: ['id', 'partner_id', 'name', 'title', 'description', 'price', 'image', 'category', 'active', 'created_at'],
       tasks: [
@@ -1102,11 +1149,12 @@ export async function getExactTableColumns(tableName: string): Promise<string[]>
         'pickup_lat', 'pickup_lng', 'delivery_lat', 'delivery_lng', 'city', 'province',
         'postal_code', 'place_id', 'items', 'notes', 'delivery_code', 'delivery_code_verified',
         'delivery_code_verified_at', 'picked_up_at', 'cancel_reason', 'verified_at',
-        'delivered_at', 'created_at', 'customer_name', 'customer_phone', 'customer_address'
+        'delivered_at', 'created_at', 'customer_name', 'customer_phone', 'customer_address',
+        'city_id', 'franchise_id'
       ],
-      assistants: ['id', 'user_id', 'status', 'full_name', 'email', 'phone', 'created_at', 'updated_at', 'notes', 'vehicle_type'],
-      assistant_subscriptions: ['id', 'assistant_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'monthly_price', 'payment_status'],
-      partner_subscriptions: ['id', 'partner_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'period_days', 'price', 'payment_status', 'renewal_requested', 'renewal_decision'],
+      assistants: ['id', 'user_id', 'status', 'full_name', 'email', 'phone', 'created_at', 'updated_at', 'notes', 'vehicle_type', 'city_id', 'franchise_id'],
+      assistant_subscriptions: ['id', 'assistant_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'monthly_price', 'payment_status', 'city_id', 'franchise_id'],
+      partner_subscriptions: ['id', 'partner_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'period_days', 'price', 'payment_status', 'renewal_requested', 'renewal_decision', 'city_id', 'franchise_id'],
       notifications: ['id', 'user_id', 'title', 'created_at'],
       dispatch_offers: [
         'id', 'order_id', 'task_id', 'assistant_id', 'dispatch_session_id', 'status',
@@ -1164,7 +1212,8 @@ export const VALID_ORDER_COLUMNS = new Set([
   'pickup_lat', 'pickup_lng', 'delivery_lat', 'delivery_lng', 'city', 'province',
   'postal_code', 'place_id', 'items', 'notes', 'delivery_code', 'delivery_code_verified',
   'delivery_code_verified_at', 'picked_up_at', 'cancel_reason', 'verified_at',
-  'delivered_at', 'created_at', 'customer_name', 'customer_phone', 'customer_address'
+  'delivered_at', 'created_at', 'customer_name', 'customer_phone', 'customer_address',
+  'city_id', 'franchise_id'
 ]);
 
 export function filterTaskPayload(payload: Record<string, any>): Record<string, any> {
@@ -1279,6 +1328,9 @@ export async function ensurePartnerInDatabase(partnerInput: Partial<Partner> & {
         category: partnerInput.category ? normalizeCategory(partnerInput.category) : (existing?.category || 'Diğer'),
         description: partnerInput.description || existing?.description || '',
         logo: partnerInput.logo || existing?.logo || '',
+        city: partnerInput.city || existing?.city || '',
+        city_id: partnerInput.city_id || existing?.city_id || null,
+        franchise_id: partnerInput.franchise_id || existing?.franchise_id || null,
         status: partnerInput.status || existing?.status || (partnerInput.active === false ? 'pending' : 'approved'),
         active: partnerInput.active !== undefined ? partnerInput.active : (existing?.active ?? true),
         created_at: partnerInput.created_at || existing?.created_at || new Date().toISOString()
@@ -1486,7 +1538,17 @@ export const db = {
     }
   },
 
-  async signUp(email: string, password: string, businessName: string, slug: string, category?: string, phone?: string) {
+  async signUp(
+    email: string, 
+    password: string, 
+    businessName: string, 
+    slug: string, 
+    category?: string, 
+    phone?: string,
+    cityId?: string | null,
+    franchiseId?: string | null,
+    cityName?: string
+  ) {
     console.log("REGISTER START");
     const cleanEmail = email.toLowerCase().trim();
     const cleanSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '') || 'magaza';
@@ -1600,6 +1662,9 @@ export const db = {
         phone: phone ? phone.trim() : '',
         address: '',
         category: partnerCategory,
+        city: cityName || '',
+        city_id: cityId || null,
+        franchise_id: franchiseId || null,
         active: false, // Default false until approved
         status: 'pending', // Default pending
         created_at: nowIso
@@ -1641,7 +1706,7 @@ export const db = {
         throw new Error('Bu mağaza ismi/adresi veya e-posta adresi zaten alınmış.');
       }
 
-      const newId = 'p_' + Math.random().toString(36).substr(2, 9);
+      const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
       const newPartner: Partner = {
         id: newId,
         slug: cleanSlug,
@@ -1650,6 +1715,9 @@ export const db = {
         phone: phone ? phone.trim() : '',
         address: '',
         category: partnerCategory,
+        city: cityName || '',
+        city_id: cityId || null,
+        franchise_id: franchiseId || null,
         description: '',
         logo: '',
         active: false, // Default false until approved
@@ -3570,6 +3638,9 @@ export const db = {
         category: appData.category ? normalizeCategory(appData.category) : 'Diğer',
         logo: appData.logo || '',
         description: appData.description || '',
+        city: appData.city || '',
+        city_id: appData.city_id || null,
+        franchise_id: appData.franchise_id || null,
         status: 'approved',
         active: true,
         created_at: appData.created_at || new Date().toISOString()
@@ -3947,6 +4018,9 @@ export const db = {
     email?: string;
     password?: string;
     vehicle_type?: 'motosiklet' | 'bisiklet' | 'arac';
+    city_id?: string | null;
+    franchise_id?: string | null;
+    city?: string;
   }): Promise<Assistant> {
     if (isSupabaseConfigured && supabase) {
       const payload: any = {
@@ -3957,6 +4031,8 @@ export const db = {
         status: 'pending' as const,
         user_id: null
       };
+      if (app.city_id) payload.city_id = app.city_id;
+      if (app.franchise_id) payload.franchise_id = app.franchise_id;
       if (app.password) {
         payload.password = app.password;
       }
@@ -3971,7 +4047,22 @@ export const db = {
       }
       return data as Assistant;
     }
-    throw new Error('Supabase veritabanı bağlantısı henüz yapılandırılmamış.');
+    // LocalStorage fallback for demo/dev mode
+    const stored = await this.getAssistants();
+    const newAssistant: Assistant = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0'),
+      full_name: app.full_name || '',
+      phone: app.phone || '',
+      email: app.email ? app.email.trim().toLowerCase() : '',
+      vehicle_type: app.vehicle_type || 'motosiklet',
+      status: 'pending',
+      city_id: app.city_id || undefined,
+      franchise_id: app.franchise_id || undefined,
+      created_at: new Date().toISOString()
+    };
+    stored.unshift(newAssistant);
+    setStored(LOCAL_STORAGE_KEYS.ASSISTANTS, stored);
+    return newAssistant;
   },
 
   async approveAssistantApplication(appId: string): Promise<{ success: boolean; error?: string }> {
@@ -4533,7 +4624,324 @@ export const db = {
 
   async savePartnerSubscriptions(subscriptions: PartnerSubscription[]): Promise<void> {
     setStored('ugra_virtual_partner_subscriptions', subscriptions);
+  },
+
+  // ==========================================
+  // CITIES (ŞEHİRLER / İLLER) CRUD
+  // ==========================================
+  async getCities(): Promise<City[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('cities')
+          .select('*')
+          .order('plate_code', { ascending: true });
+        if (!error && data && data.length > 0) {
+          return data as City[];
+        }
+      } catch (err) {
+        console.warn('Supabase getCities notice:', err);
+      }
+    }
+
+    const stored = getStored<City>(LOCAL_STORAGE_KEYS.CITIES);
+    if (stored.length === 0) {
+      const defaultSakarya: City = {
+        id: 'city_sakarya_54',
+        name: 'Sakarya',
+        plate_code: 54,
+        center_lat: 40.7731,
+        center_lng: 30.4005,
+        is_active: true,
+        created_at: new Date().toISOString()
+      };
+      setStored(LOCAL_STORAGE_KEYS.CITIES, [defaultSakarya]);
+      return [defaultSakarya];
+    }
+    return stored;
+  },
+
+  async getActiveCities(): Promise<City[]> {
+    const all = await this.getCities();
+    return all.filter(c => c.is_active);
+  },
+
+  async getCity(id: string): Promise<City | null> {
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('cities')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (!error && data) return data as City;
+      } catch (err) {
+        console.warn('Supabase getCity notice:', err);
+      }
+    }
+    const cities = await this.getCities();
+    return cities.find(c => c.id === id) || null;
+  },
+
+  async createCity(cityData: { name: string; plate_code: number; center_lat?: number | null; center_lng?: number | null; is_active?: boolean }): Promise<City> {
+    const payload = {
+      name: cityData.name.trim(),
+      plate_code: Number(cityData.plate_code),
+      center_lat: cityData.center_lat ?? null,
+      center_lng: cityData.center_lng ?? null,
+      is_active: cityData.is_active ?? true
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('cities')
+          .insert(payload)
+          .select()
+          .single();
+        if (!error && data) return data as City;
+      } catch (err) {
+        console.warn('Supabase createCity notice:', err);
+      }
+    }
+
+    const stored = await this.getCities();
+    const newCity: City = {
+      id: `city_${Date.now()}`,
+      ...payload,
+      created_at: new Date().toISOString()
+    };
+    stored.push(newCity);
+    setStored(LOCAL_STORAGE_KEYS.CITIES, stored);
+    return newCity;
+  },
+
+  async updateCity(id: string, updates: Partial<City>): Promise<City> {
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('cities')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single();
+        if (!error && data) return data as City;
+      } catch (err) {
+        console.warn('Supabase updateCity notice:', err);
+      }
+    }
+
+    const stored = await this.getCities();
+    const index = stored.findIndex(c => c.id === id);
+    if (index !== -1) {
+      stored[index] = { ...stored[index], ...updates };
+      setStored(LOCAL_STORAGE_KEYS.CITIES, stored);
+      return stored[index];
+    }
+    throw new Error('City not found');
+  },
+
+  async toggleCityActive(id: string, isActive: boolean): Promise<City> {
+    return this.updateCity(id, { is_active: isActive });
+  },
+
+  // ==========================================
+  // FRANCHISES (BAYİLER) CRUD
+  // ==========================================
+  async getFranchises(): Promise<Franchise[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('franchises')
+          .select('*, cities(name)')
+          .order('created_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+          return data.map((f: any) => ({
+            ...f,
+            city_name: f.cities?.name || undefined
+          })) as Franchise[];
+        }
+      } catch (err) {
+        console.warn('Supabase getFranchises notice:', err);
+      }
+    }
+
+    const stored = getStored<Franchise>(LOCAL_STORAGE_KEYS.FRANCHISES);
+    if (stored.length === 0) {
+      const defaultFranchise: Franchise = {
+        id: 'franchise_sakarya_ana_bayi',
+        city_id: 'city_sakarya_54',
+        city_name: 'Sakarya',
+        name: 'Sakarya Ana Bayi',
+        company_title: 'Uğra Sakarya Operasyon',
+        authorized_person: null,
+        phone: null,
+        email: null,
+        status: 'active',
+        revenue_share_percentage: 0,
+        districts_covered: ['Adapazarı', 'Serdivan', 'Erenler', 'Arifiye', 'Sapanca', 'Hendek', 'Akyazı', 'Geyve', 'Karasu'],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      setStored(LOCAL_STORAGE_KEYS.FRANCHISES, [defaultFranchise]);
+      return [defaultFranchise];
+    }
+    return stored;
+  },
+
+  async getFranchisesByCity(cityId: string): Promise<Franchise[]> {
+    const all = await this.getFranchises();
+    return all.filter(f => f.city_id === cityId);
+  },
+
+  async getFranchise(id: string): Promise<Franchise | null> {
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('franchises')
+          .select('*, cities(name)')
+          .eq('id', id)
+          .maybeSingle();
+        if (!error && data) {
+          return {
+            ...data,
+            city_name: (data as any).cities?.name || undefined
+          } as Franchise;
+        }
+      } catch (err) {
+        console.warn('Supabase getFranchise notice:', err);
+      }
+    }
+    const franchises = await this.getFranchises();
+    return franchises.find(f => f.id === id) || null;
+  },
+
+  async createFranchise(franchiseData: {
+    city_id: string;
+    name: string;
+    company_title?: string | null;
+    authorized_person?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    status?: 'active' | 'suspended' | 'passive';
+    revenue_share_percentage?: number;
+    districts_covered?: string[];
+  }): Promise<Franchise> {
+    const payload = {
+      city_id: franchiseData.city_id,
+      name: franchiseData.name.trim(),
+      company_title: franchiseData.company_title || null,
+      authorized_person: franchiseData.authorized_person || null,
+      phone: franchiseData.phone || null,
+      email: franchiseData.email || null,
+      status: franchiseData.status || 'active',
+      revenue_share_percentage: Number(franchiseData.revenue_share_percentage || 0),
+      districts_covered: franchiseData.districts_covered || [],
+      updated_at: new Date().toISOString()
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('franchises')
+          .insert(payload)
+          .select()
+          .single();
+        if (!error && data) return data as Franchise;
+      } catch (err) {
+        console.warn('Supabase createFranchise notice:', err);
+      }
+    }
+
+    const stored = await this.getFranchises();
+    const cities = await this.getCities();
+    const matchedCity = cities.find(c => c.id === payload.city_id);
+
+    const newFranchise: Franchise = {
+      id: `franchise_${Date.now()}`,
+      ...payload,
+      city_name: matchedCity?.name,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    stored.unshift(newFranchise);
+    setStored(LOCAL_STORAGE_KEYS.FRANCHISES, stored);
+    return newFranchise;
+  },
+
+  async updateFranchise(id: string, updates: Partial<Franchise>): Promise<Franchise> {
+    const payload = {
+      ...updates,
+      updated_at: new Date().toISOString()
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        const client = await getActiveSupabaseClient();
+        const { data, error } = await client
+          .from('franchises')
+          .update(payload)
+          .eq('id', id)
+          .select()
+          .single();
+        if (!error && data) return data as Franchise;
+      } catch (err) {
+        console.warn('Supabase updateFranchise notice:', err);
+      }
+    }
+
+    const stored = await this.getFranchises();
+    const index = stored.findIndex(f => f.id === id);
+    if (index !== -1) {
+      const cities = await this.getCities();
+      const updatedItem = { ...stored[index], ...payload };
+      if (updatedItem.city_id) {
+        const matchedCity = cities.find(c => c.id === updatedItem.city_id);
+        if (matchedCity) updatedItem.city_name = matchedCity.name;
+      }
+      stored[index] = updatedItem;
+      setStored(LOCAL_STORAGE_KEYS.FRANCHISES, stored);
+      return stored[index];
+    }
+    throw new Error('Franchise not found');
+  },
+
+  async resolveFranchiseForCity(cityId: string): Promise<{
+    count: number;
+    franchiseId: string | null;
+    franchise: Franchise | null;
+    franchises: Franchise[];
+  }> {
+    if (!cityId) {
+      return { count: 0, franchiseId: null, franchise: null, franchises: [] };
+    }
+    const allFranchises = await this.getFranchisesByCity(cityId);
+    const activeFranchises = allFranchises.filter(f => f.status === 'active' || (f as any).is_active === true);
+    
+    if (activeFranchises.length === 0) {
+      return { count: 0, franchiseId: null, franchise: null, franchises: [] };
+    }
+    if (activeFranchises.length === 1) {
+      return { count: 1, franchiseId: activeFranchises[0].id, franchise: activeFranchises[0], franchises: activeFranchises };
+    }
+    return { count: activeFranchises.length, franchiseId: null, franchise: null, franchises: activeFranchises };
   }
 };
+
+export async function resolveFranchiseForCity(cityId: string): Promise<{
+  count: number;
+  franchiseId: string | null;
+  franchise: Franchise | null;
+  franchises: Franchise[];
+}> {
+  return db.resolveFranchiseForCity(cityId);
+}
 
 export const api = db;

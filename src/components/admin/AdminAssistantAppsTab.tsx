@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Bike, Check, X, Search, FileText, FileCheck, Phone, Eye, ShieldAlert, Trash2, AlertCircle, CheckCircle2
+  Bike, Check, X, Search, FileText, FileCheck, Phone, Eye, ShieldAlert, Trash2, AlertCircle, CheckCircle2, MapPin, Building
 } from 'lucide-react';
-import { AssistantApplication, db } from '@/lib/supabase';
+import { AssistantApplication, db, City, Franchise } from '@/lib/supabase';
 import { ConfirmModal } from './ConfirmModal';
 
 interface AdminAssistantAppsTabProps {
@@ -21,6 +21,40 @@ export const AdminAssistantAppsTab: React.FC<AdminAssistantAppsTabProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
   const [viewingApp, setViewingApp] = useState<AssistantApplication | null>(null);
+  const [cities, setCities] = useState<City[]>([]);
+  const [franchises, setFranchises] = useState<Franchise[]>([]);
+
+  useEffect(() => {
+    const loadMetadata = async () => {
+      try {
+        const [cList, fList] = await Promise.all([
+          db.getCities(),
+          db.getFranchises()
+        ]);
+        setCities(cList || []);
+        setFranchises(fList || []);
+      } catch (err) {
+        console.warn('Error loading cities/franchises in assistant admin tab:', err);
+      }
+    };
+    loadMetadata();
+  }, []);
+
+  const getCityName = (cityId?: string | null, fallbackCity?: string | null) => {
+    if (cityId) {
+      const match = cities.find(c => c.id === cityId);
+      if (match) return match.name;
+    }
+    return fallbackCity || null;
+  };
+
+  const getFranchiseName = (franchiseId?: string | null) => {
+    if (franchiseId) {
+      const match = franchises.find(f => f.id === franchiseId);
+      if (match) return match.name;
+    }
+    return null;
+  };
 
   // Reject Reason Modal
   const [rejectingApp, setRejectingApp] = useState<AssistantApplication | null>(null);
@@ -213,6 +247,18 @@ export const AdminAssistantAppsTab: React.FC<AdminAssistantAppsTabProps> = ({
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 capitalize">
                         {app.vehicle_type || 'Motosiklet'}
                       </span>
+                      {getCityName(app.city_id, (app as any).city) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 border border-gray-200 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-gray-500" />
+                          {getCityName(app.city_id, (app as any).city)}
+                        </span>
+                      )}
+                      {getFranchiseName(app.franchise_id) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                          <Building className="w-3 h-3 text-emerald-600" />
+                          {getFranchiseName(app.franchise_id)}
+                        </span>
+                      )}
                     </h3>
                     <p className="text-xs text-[#6B7280] mt-0.5 font-medium">Tel: <span className="font-mono text-[#1F2937]">{app.phone}</span> {app.email ? `• ${app.email}` : ''}</p>
                   </div>
@@ -263,9 +309,26 @@ export const AdminAssistantAppsTab: React.FC<AdminAssistantAppsTabProps> = ({
               <X className="w-4 h-4" />
             </button>
 
-            <h2 className="text-lg font-bold text-[#1F2937] flex items-center gap-2">
-              <FileCheck className="w-5 h-5 text-blue-600" /> {viewingApp.full_name} Evrak Dosyası
-            </h2>
+            <div>
+              <h2 className="text-lg font-bold text-[#1F2937] flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-blue-600" /> {viewingApp.full_name} Evrak Dosyası
+              </h2>
+              <div className="flex items-center gap-2 text-xs text-[#6B7280] mt-1 font-medium">
+                {getCityName(viewingApp.city_id, (viewingApp as any).city) && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-gray-500" />
+                    {getCityName(viewingApp.city_id, (viewingApp as any).city)}
+                  </span>
+                )}
+                {getFranchiseName(viewingApp.franchise_id) && (
+                  <span className="flex items-center gap-1 text-emerald-700">
+                    • <Building className="w-3.5 h-3.5 text-emerald-600" />
+                    {getFranchiseName(viewingApp.franchise_id)}
+                  </span>
+                )}
+                <span>• Tel: {viewingApp.phone}</span>
+              </div>
+            </div>
 
             <div className="space-y-2">
               <div className="p-3 bg-[#F8FAFC] border border-[#E5E7EB] rounded-xl flex items-center justify-between text-[#1F2937] font-medium">
