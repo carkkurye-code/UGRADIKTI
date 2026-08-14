@@ -8,7 +8,6 @@ import { Partner, Order, AssistantApplication, Assistant, AuditLog } from '@/lib
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from 'recharts';
 
 import { TaskService } from '@/services/taskService';
-import { WalletService } from '@/services/walletService';
 import { NotificationService } from '@/services/notificationService';
 import { PartnerOperationsService } from '@/services/partnerOperations';
 import { CustomerTrackingService } from '@/services/customerTracking';
@@ -95,7 +94,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
   const weeklyRevenue = weeklyOrders.filter(o => (o.status as string) !== 'iptal' && (o.status as string) !== 'cancelled').reduce((acc, o) => acc + (Number(o.total_price) || 0), 0);
   const monthlyRevenue = monthlyOrders.filter(o => (o.status as string) !== 'iptal' && (o.status as string) !== 'cancelled').reduce((acc, o) => acc + (Number(o.total_price) || 0), 0);
 
-  // Commission from WalletService Config (%0 in customer offer model)
+  // Commission (%0 in customer offer model)
   const commissionRate = 0;
   const dailyCommission = 0;
 

@@ -113,27 +113,6 @@ export function useRealtimeSync(userId?: string): void {
       }
     };
 
-    const handleWalletChange = (payload: any) => {
-      try {
-        if (!payload?.new) return;
-        const newRow = payload.new as any;
-        if (!newRow.profile_id) return;
-
-        eventBus.publish(
-          createDomainEvent('WALLET_UPDATED', newRow.profile_id, {
-            profileId: newRow.profile_id,
-            walletId: newRow.id,
-            transactionType: 'realtime_update',
-            amount: 0,
-            newBalance: newRow.available_balance,
-            description: 'Realtime bakiye güncellemesi',
-          })
-        );
-      } catch (err) {
-        console.warn('[RealtimeSync] [wallets] Safe payload handler caught error:', err);
-      }
-    };
-
     const handleNotificationChange = (payload: any) => {
       try {
         if (!payload?.new) return;
@@ -163,17 +142,10 @@ export function useRealtimeSync(userId?: string): void {
         handler: handleOrderChange,
       },
       {
-        channelName: 'ugra-realtime-wallets',
-        tableName: 'wallets',
-        eventFilter: '*',
-        staggerOffsetMs: 2000,
-        handler: handleWalletChange,
-      },
-      {
         channelName: 'ugra-realtime-notifications',
         tableName: 'notifications',
         eventFilter: 'INSERT',
-        staggerOffsetMs: 4000,
+        staggerOffsetMs: 2000,
         handler: handleNotificationChange,
       },
     ];

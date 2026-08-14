@@ -1090,8 +1090,6 @@ export async function getExactTableColumns(tableName: string): Promise<string[]>
       ],
       assistants: ['id', 'user_id', 'status', 'full_name', 'email', 'phone', 'created_at', 'updated_at', 'notes', 'vehicle_type'],
       assistant_subscriptions: ['id', 'assistant_id', 'status', 'created_at', 'updated_at', 'notes', 'start_date', 'expires_at', 'monthly_price', 'payment_status'],
-      wallets: ['id', 'user_id', 'profile_id', 'created_at', 'updated_at', 'balance'],
-      wallet_transactions: ['id', 'task_id', 'description', 'created_at'],
       notifications: ['id', 'user_id', 'title', 'created_at'],
       dispatch_offers: [
         'id', 'order_id', 'task_id', 'assistant_id', 'dispatch_session_id', 'status',

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Order, Product, Partner, isUUID } from '@/lib/supabase';
 import { ShoppingBag, CircleDollarSign, TrendingUp, Calendar, Clock, CheckCircle2, XCircle, AlertCircle, Package } from 'lucide-react';
 import { PartnerOperationsService } from '@/services/partnerOperations';
-import { WalletService } from '@/services/walletService';
 import { PartnerDashboardMetrics } from '@/types/partnerOperations';
 
 interface PartnerOverviewTabProps {
@@ -21,7 +20,6 @@ export const PartnerOverviewTab: React.FC<PartnerOverviewTabProps> = ({
   onNavigateTab
 }) => {
   const [metrics, setMetrics] = useState<PartnerDashboardMetrics | null>(null);
-  const [walletBalance, setWalletBalance] = useState<number>(0);
 
   useEffect(() => {
     const partnerId = partner?.id || orders[0]?.partner_id;
@@ -29,15 +27,9 @@ export const PartnerOverviewTab: React.FC<PartnerOverviewTabProps> = ({
       return;
     }
     
-    Promise.all([
-      PartnerOperationsService.getDashboardMetrics(partnerId),
-      WalletService.getWallet(partnerId),
-    ]).then(([m, w]) => {
-      setMetrics(m);
-      if (w.data) {
-        setWalletBalance(w.data.available_balance);
-      }
-    }).catch(err => console.error('Error fetching partner metrics:', err));
+    PartnerOperationsService.getDashboardMetrics(partnerId)
+      .then(m => setMetrics(m))
+      .catch(err => console.error('Error fetching partner metrics:', err));
   }, [partner?.id, orders]);
 
   // Fallback Calculations

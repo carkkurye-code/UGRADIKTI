@@ -354,12 +354,12 @@ export class NotificationService {
   }
 
   /**
-   * 8. Send Payment / Wallet Notification helper
+   * 8. Send Payment Notification helper
    */
   public static async sendPaymentNotification(
     recipientProfileId: string,
     amount: number,
-    type: 'payment_received' | 'wallet_updated',
+    type: 'payment_received',
     title: string,
     body: string,
     payload?: NotificationPayload

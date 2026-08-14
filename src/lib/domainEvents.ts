@@ -7,7 +7,6 @@ export type DomainEventType =
   | 'TASK_CANCELLED'
   | 'PAYMENT_CAPTURED'
   | 'PAYMENT_REFUNDED'
-  | 'WALLET_UPDATED'
   | 'RATING_CREATED'
   | 'NOTIFICATION_CREATED'
   | 'PARTNER_APPROVED'
@@ -88,16 +87,6 @@ export interface PaymentRefundedPayload {
   customerId: string;
   amount: number;
   reason?: string;
-}
-
-export interface WalletUpdatedPayload {
-  profileId: string;
-  walletId?: string;
-  transactionType: string;
-  amount: number;
-  newBalance: number;
-  description?: string;
-  taskId?: string;
 }
 
 export interface RatingCreatedPayload {

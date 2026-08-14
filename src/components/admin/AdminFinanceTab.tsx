@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Landmark, DollarSign, TrendingUp, ArrowUpRight, CheckCircle2, Clock, 
-  Building, Bike, FileText, Download, Calendar, ArrowDownRight, Wallet as WalletIcon, RefreshCw, Coins
+  DollarSign, TrendingUp, ArrowUpRight, 
+  Bike, RefreshCw, Coins
 } from 'lucide-react';
 import { Order, Partner, Assistant } from '@/lib/supabase';
-import { WalletService } from '@/services/walletService';
-import { WalletTransaction, Wallet } from '@/types/wallet';
 
 interface AdminFinanceTabProps {
   orders: Order[];
@@ -21,50 +19,7 @@ export const AdminFinanceTab: React.FC<AdminFinanceTabProps> = ({
   onRefresh
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
-  const [ledgerTx, setLedgerTx] = useState<WalletTransaction[]>([]);
-  const [adminWallet, setAdminWallet] = useState<Wallet | null>(null);
-  const [partnerWallets, setPartnerWallets] = useState<Record<string, Wallet>>({});
-  const [loading, setLoading] = useState(false);
 
-  const loadFinancialData = async () => {
-    setLoading(true);
-    try {
-      // 1. Fetch Admin Main Wallet
-      const walletRes = await WalletService.getWallet('admin-1');
-      if (walletRes.success && walletRes.data) {
-        setAdminWallet(walletRes.data);
-      }
-
-      // 2. Fetch Ledger Transactions
-      const txRes = await WalletService.getTransactions('admin-1', 100);
-      if (txRes.success && txRes.data) {
-        setLedgerTx(txRes.data);
-      }
-
-      // 3. Fetch Wallets for Top Partners
-      const walletMap: Record<string, Wallet> = {};
-      await Promise.all(
-        partners.slice(0, 10).map(async (p) => {
-          const pWalletRes = await WalletService.getWallet(p.id);
-          if (pWalletRes.success && pWalletRes.data) {
-            walletMap[p.id] = pWalletRes.data;
-          }
-        })
-      );
-      setPartnerWallets(walletMap);
-    } catch (err) {
-      console.error('Error loading financial data from WalletService:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadFinancialData();
-  }, [partners, orders]);
-
-  // Read Commission Configuration via WalletService
-  const commissionConfig = WalletService.getCommissionConfig();
   const platformCommissionRate = 0; // UĞRA does not take order commission
 
   const now = new Date();
@@ -76,28 +31,24 @@ export const AdminFinanceTab: React.FC<AdminFinanceTabProps> = ({
 
   const validOrders = orders.filter(o => (o.status as string) !== 'iptal' && (o.status as string) !== 'cancelled' && new Date(o.created_at || '').getTime() >= activePeriodStart);
 
-  // Math calculated via WalletService breakdown logic
+  // Financial calculations based on real orders
   const totalVolume = validOrders.reduce((acc, o) => acc + (Number(o.total_price) || 0), 0);
-  const platformCommission = 0;
-  const partnerPayoutsTotal = 0;
   const assistantEarningsTotal = totalVolume; // 100% goes to assistants
 
   // Partner Wise Earnings
-  const partnerFinanceMap: Record<string, { name: string; totalVolume: number; commission: number; netPayout: number; orderCount: number; availableBalance?: number }> = {};
+  const partnerFinanceMap: Record<string, { name: string; totalVolume: number; commission: number; netPayout: number; orderCount: number }> = {};
   
   validOrders.forEach(o => {
     const pid = o.partner_id || 'unknown';
     const p = partners.find(item => item.id === pid);
     const pName = p?.business_name || 'Partner Mağaza';
     if (!partnerFinanceMap[pid]) {
-      const pWallet = partnerWallets[pid];
       partnerFinanceMap[pid] = { 
         name: pName, 
         totalVolume: 0, 
         commission: 0, 
         netPayout: 0, 
         orderCount: 0,
-        availableBalance: pWallet?.available_balance
       };
     }
     const val = Number(o.total_price) || 0;
@@ -117,20 +68,16 @@ export const AdminFinanceTab: React.FC<AdminFinanceTabProps> = ({
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#E5E5E7] shadow-sm">
         <div>
-          <h1 className="text-2xl font-black text-[#111111]">Finans & Hakediş Yönetimi (WalletService)</h1>
-          <p className="text-sm text-[#666666] mt-1">WalletService çift taraflı muhasebe defteri, bakiye senkronizasyonu ve komisyon havuzu.</p>
+          <h1 className="text-2xl font-black text-[#111111]">Finans & Hakediş Yönetimi</h1>
+          <p className="text-sm text-[#666666] mt-1">Sipariş hacmi, mağaza ciroları ve asistan hakediş dökümü.</p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              loadFinancialData();
-              onRefresh();
-            }}
-            disabled={loading}
-            className="px-3.5 py-2 rounded-xl bg-[#F7F7F8] border border-[#E5E5E7] hover:bg-[#F2F2F3] text-xs font-bold text-[#111111] flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            onClick={() => onRefresh()}
+            className="px-3.5 py-2 rounded-xl bg-[#F7F7F8] border border-[#E5E5E7] hover:bg-[#F2F2F3] text-xs font-bold text-[#111111] flex items-center gap-2 cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#111111] ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className="w-3.5 h-3.5 text-[#111111]" />
             Yenile
           </button>
 
@@ -212,12 +159,12 @@ export const AdminFinanceTab: React.FC<AdminFinanceTabProps> = ({
         </div>
       </div>
 
-      {/* PARTNER PAYOUT TABLE WITH WALLET BALANCES */}
+      {/* PARTNER PAYOUT TABLE */}
       <div className="bg-white border border-[#E5E5E7] rounded-2xl overflow-hidden shadow-sm">
         <div className="p-5 border-b border-[#E5E5E7] flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-base text-[#111111]">Mağaza Hakediş & Cüzdan Raporu</h3>
-            <p className="text-xs text-[#666666]">Seçili periyoddaki bayi başı ciro, net ödeme dökümü ve WalletService cüzdan bakiyeleri.</p>
+            <h3 className="font-bold text-base text-[#111111]">Mağaza Hakediş Raporu</h3>
+            <p className="text-xs text-[#666666]">Seçili periyoddaki mağaza başı ciro, sipariş sayısı ve net hakediş dökümü.</p>
           </div>
         </div>
 
@@ -229,14 +176,13 @@ export const AdminFinanceTab: React.FC<AdminFinanceTabProps> = ({
                 <th className="px-5 py-3.5">Sipariş Sayısı</th>
                 <th className="px-5 py-3.5">Toplam Ciro</th>
                 <th className="px-5 py-3.5">Komisyon (%{Math.round(platformCommissionRate * 100)})</th>
-                <th className="px-5 py-3.5">Net Hakediş</th>
-                <th className="px-5 py-3.5 text-right">Cüzdan Bakiyesi</th>
+                <th className="px-5 py-3.5 text-right">Net Hakediş</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E5E7]">
               {partnerFinanceList.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-[#666666]">
+                  <td colSpan={5} className="px-5 py-8 text-center text-[#666666]">
                     Seçili periyodda finansal işlem kaydı bulunmuyor.
                   </td>
                 </tr>
@@ -251,13 +197,8 @@ export const AdminFinanceTab: React.FC<AdminFinanceTabProps> = ({
                     <td className="px-5 py-3.5 font-mono text-red-600 font-bold">
                       -{row.commission.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
                     </td>
-                    <td className="px-5 py-3.5 font-mono font-black text-emerald-700">
+                    <td className="px-5 py-3.5 font-mono font-black text-right text-emerald-700">
                       {row.netPayout.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                    </td>
-                    <td className="px-5 py-3.5 font-mono font-bold text-right text-[#111111]">
-                      {row.availableBalance !== undefined 
-                        ? `${row.availableBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`
-                        : `${row.netPayout.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`}
                     </td>
                   </tr>
                 ))
@@ -266,34 +207,6 @@ export const AdminFinanceTab: React.FC<AdminFinanceTabProps> = ({
           </table>
         </div>
       </div>
-
-      {/* RECENT WALLET TRANSACTIONS LEDGER */}
-      {ledgerTx.length > 0 && (
-        <div className="bg-white border border-[#E5E5E7] rounded-2xl p-5 space-y-3 shadow-sm">
-          <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E7]">
-            <h3 className="font-bold text-sm text-[#111111] flex items-center gap-2">
-              <WalletIcon className="w-4 h-4 text-[#111111]" /> Son Muhasebe Cüzdan Hareketleri (Ledger)
-            </h3>
-            <span className="text-xs text-[#666666] font-mono">{ledgerTx.length} Kayıt</span>
-          </div>
-
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {ledgerTx.map((tx) => (
-              <div key={tx.id} className="p-3 bg-[#F7F7F8] rounded-xl border border-[#E5E5E7] flex items-center justify-between text-xs">
-                <div>
-                  <div className="font-bold text-[#111111]">{tx.description || tx.type}</div>
-                  <div className="text-[10px] text-[#666666] font-mono">
-                    {new Date(tx.created_at).toLocaleString('tr-TR')}
-                  </div>
-                </div>
-                <div className="font-mono font-bold text-emerald-700">
-                  +{tx.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

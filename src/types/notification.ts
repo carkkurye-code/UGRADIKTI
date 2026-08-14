@@ -3,7 +3,6 @@ export type NotificationType =
   | 'task_updated'
   | 'task_completed'
   | 'payment_received'
-  | 'wallet_updated'
   | 'system'
   | 'announcement';
 
@@ -13,7 +12,6 @@ export interface NotificationPayload {
   task_id?: string;
   order_id?: string;
   payment_id?: string;
-  wallet_transaction_id?: string;
   amount?: number;
   sender_name?: string;
   action_url?: string;

@@ -11,14 +11,12 @@ import {
   TaskCancelledPayload,
   PaymentCapturedPayload,
   PaymentRefundedPayload,
-  WalletUpdatedPayload,
   RatingCreatedPayload,
   NotificationCreatedPayload,
   PartnerApprovedPayload,
   AssistantApprovedPayload,
 } from '@/lib/domainEvents';
 import { TaskService } from './taskService';
-import { WalletService } from './walletService';
 import { RatingService } from './ratingService';
 import { NotificationService } from './notificationService';
 import { DispatchEngine } from './dispatchEngine';
@@ -90,12 +88,7 @@ export class IntegrationService {
           await recordAuditLog('TASK_CREATED', customerId, { ...evt.payload });
         }
 
-        // c. Wallet Escrow Hold
-        if (customerId && price > 0) {
-          await WalletService.holdBalance(customerId, price, taskId);
-        }
-
-        // d. Trigger Live Dispatch Engine
+        // c. Trigger Live Dispatch Engine
         await LiveDispatchService.dispatchToNextCandidate({
           id: taskId,
           customer_id: customerId || '',
@@ -235,31 +228,7 @@ export class IntegrationService {
           } catch (e) {}
         }
 
-        // a. Capture Payment & Release Escrow
-        await WalletService.capturePayment(taskId);
-
-        // b. Calculate Commission Breakdown
-        const breakdown = WalletService.calculateCommission(price || 0);
-
-        // c. Deposit Assistant Earnings
-        if (assistantId && isUUID(assistantId) && breakdown.assistant_amount > 0) {
-          await WalletService.deposit(
-            assistantId,
-            breakdown.assistant_amount,
-            `Görev Kazancı (#${taskId})`
-          );
-        }
-
-        // d. Deposit Partner Earnings (if applicable)
-        if (partnerId && isUUID(partnerId) && breakdown.partner_amount > 0) {
-          await WalletService.deposit(
-            partnerId,
-            breakdown.partner_amount,
-            `Görev Komisyon Payı (#${taskId})`
-          );
-        }
-
-        // e. Notification to Customer
+        // a. Notification to Customer
         if (customerId && isUUID(customerId)) {
           await NotificationService.sendTaskNotification(
             customerId,
@@ -270,24 +239,23 @@ export class IntegrationService {
           );
         }
 
-        // f. Notification to Assistant
+        // b. Notification to Assistant
         if (assistantId && isUUID(assistantId)) {
           await NotificationService.sendPaymentNotification(
             assistantId,
-            breakdown.assistant_amount,
+            price || 0,
             'payment_received',
-            'Kazanç Hesabınıza Aktarıldı',
-            `#${taskId} numaralı görevden ${breakdown.assistant_amount} ₺ kazancınız bakiyenize eklendi.`
+            'Görev Tamamlandı',
+            `#${taskId} numaralı görev başarıyla tamamlandı.`
           );
         }
 
-        // g. Audit Log
+        // c. Audit Log
         await recordAuditLog('TASK_COMPLETED', assistantId || customerId || 'system', {
           taskId,
           customerId,
           partnerId,
           price,
-          breakdown,
         });
 
         // h. Trigger Automatic Rating Prompt Notification
@@ -328,13 +296,7 @@ export class IntegrationService {
           } catch (e) {}
         }
 
-        // a. Release Escrow / Refund Customer
-        if (customerId && price > 0) {
-          await WalletService.releaseBalance(customerId, price, taskId);
-          await WalletService.refundPayment(taskId, reason);
-        }
-
-        // b. Notification to Customer
+        // a. Notification to Customer
         if (customerId && isUUID(customerId)) {
           await NotificationService.sendTaskNotification(
             customerId,
@@ -345,7 +307,7 @@ export class IntegrationService {
           );
         }
 
-        // c. Notification to Assistant (if assigned)
+        // b. Notification to Assistant (if assigned)
         if (assistantId && isUUID(assistantId)) {
           await NotificationService.sendTaskNotification(
             assistantId,
@@ -356,7 +318,7 @@ export class IntegrationService {
           );
         }
 
-        // d. Audit Log
+        // c. Audit Log
         if (customerId || assistantId) {
           await recordAuditLog('TASK_CANCELLED', customerId || assistantId || 'system', { taskId, reason, price });
         }
@@ -391,32 +353,7 @@ export class IntegrationService {
       })
     );
 
-    // 7. WALLET_UPDATED
-    this.unbindList.push(
-      eventBus.subscribe<WalletUpdatedPayload>('WALLET_UPDATED', async (evt) => {
-        const { profileId, amount, transactionType, newBalance, description } = evt.payload;
-        console.log(`[IntegrationEngine] Processing WALLET_UPDATED for profile ${profileId}`);
-
-        // a. Send Notification
-        await NotificationService.sendPaymentNotification(
-          profileId,
-          Math.abs(amount),
-          'wallet_updated',
-          'Cüzdan Bakiyeniz Güncellendi',
-          `${description || 'Cüzdanınızda yeni bir işlem gerçekleşti.'} Güncel bakiye: ${newBalance} ₺`
-        );
-
-        // b. Audit Log
-        await recordAuditLog('WALLET_UPDATED', profileId, {
-          amount,
-          transactionType,
-          newBalance,
-          description,
-        });
-      })
-    );
-
-    // 8. PARTNER_APPROVED
+    // 7. PARTNER_APPROVED
     this.unbindList.push(
       eventBus.subscribe<PartnerApprovedPayload>('PARTNER_APPROVED', async (evt) => {
         const { partnerProfileId, partnerId, approvedBy } = evt.payload;
@@ -531,11 +468,6 @@ export class IntegrationService {
 
   public static async emitPaymentRefunded(payload: PaymentRefundedPayload, actorId?: string): Promise<void> {
     const event = createDomainEvent('PAYMENT_REFUNDED', payload.taskId, payload, actorId);
-    await eventBus.publish(event);
-  }
-
-  public static async emitWalletUpdated(payload: WalletUpdatedPayload, actorId?: string): Promise<void> {
-    const event = createDomainEvent('WALLET_UPDATED', payload.profileId, payload, actorId || payload.profileId);
     await eventBus.publish(event);
   }
 
