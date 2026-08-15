@@ -1263,7 +1263,8 @@ export async function getOrdersTableColumns(): Promise<Set<string>> {
       'id', 'partner_id', 'customer_name', 'customer_phone', 'customer_address',
       'delivery_address', 'payment_type', 'total_price', 'items', 'notes', 'status', 'created_at',
       'service_type', 'distance_km', 'estimated_minutes', 'courier_net', 'base_price', 'fuel_cost',
-      'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost', 'commission', 'customer_price'
+      'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost', 'commission', 'customer_price',
+      'city_id', 'franchise_id'
     ]);
   }
 
@@ -1277,7 +1278,8 @@ export async function getOrdersTableColumns(): Promise<Set<string>> {
     'id', 'partner_id', 'customer_name', 'customer_phone', 'customer_address',
     'payment_type', 'total_price', 'items', 'notes', 'status', 'created_at',
     'service_type', 'distance_km', 'estimated_minutes', 'courier_net', 'base_price', 'fuel_cost',
-    'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost', 'commission', 'customer_price'
+    'wear_cost', 'operation_cost', 'tax_cost', 'vat_cost', 'commission', 'customer_price',
+    'city_id', 'franchise_id'
   ]);
   return cachedOrdersTableColumns;
 }
@@ -2739,6 +2741,24 @@ export const db = {
       const cols = await getOrdersTableColumns();
       console.log("🔍 Valid 'orders' table columns for insert:", Array.from(cols));
 
+      // Resolve City and Franchise Snapshot for the Order
+      const snapshot = await resolveCityAndFranchiseSnapshot({
+        partner_id: partnerUuid,
+        city_id: order.city_id || null,
+        franchise_id: order.franchise_id || null,
+        city: order.city || null,
+        province: order.province || null,
+        district: order.district || null,
+        pickup_zone: order.pickup_zone || null,
+        delivery_zone: order.delivery_zone || null,
+        pickup_address: pickupAddr || order.pickup_address || null,
+        delivery_address: deliveryAddr || order.delivery_address || null,
+        address: custAddr || normAddress || null
+      });
+
+      const snapCityId = snapshot.city_id;
+      const snapFranchiseId = snapshot.franchise_id;
+
       // 3. Construct dynamic payload including ONLY introspected columns
       const payload: Record<string, any> = {};
 
@@ -2747,6 +2767,12 @@ export const db = {
       }
       if (cols.has('store_id')) {
         payload.store_id = partnerUuid;
+      }
+      if (snapCityId && (cols.has('city_id') || cols.size === 0)) {
+        payload.city_id = snapCityId;
+      }
+      if (snapFranchiseId && (cols.has('franchise_id') || cols.size === 0)) {
+        payload.franchise_id = snapFranchiseId;
       }
       if (cols.has('customer_name')) {
         payload.customer_name = order.customer_name?.trim() || 'Müşteri';
@@ -2848,6 +2874,8 @@ export const db = {
         ...order,
         ...data,
         partner_id: order.partner_id,
+        city_id: data.city_id || snapCityId || order.city_id || null,
+        franchise_id: data.franchise_id || snapFranchiseId || order.franchise_id || null,
         customer_name: data.customer_name || order.customer_name,
         customer_phone: data.customer_phone || order.customer_phone,
         customer_address: data.customer_address || data.delivery_address || data.address || normAddress,
@@ -2866,12 +2894,28 @@ export const db = {
 
       return returnedOrder;
     } else {
+      const snapshot = await resolveCityAndFranchiseSnapshot({
+        partner_id: partnerUuid,
+        city_id: order.city_id || null,
+        franchise_id: order.franchise_id || null,
+        city: order.city || null,
+        province: order.province || null,
+        district: order.district || null,
+        pickup_zone: order.pickup_zone || null,
+        delivery_zone: order.delivery_zone || null,
+        pickup_address: pickupAddr || order.pickup_address || null,
+        delivery_address: deliveryAddr || order.delivery_address || null,
+        address: custAddr || normAddress || null
+      });
+
       const orders = getStored<Order>(LOCAL_STORAGE_KEYS.ORDERS);
       const newOrder: Order = {
         ...order,
         id: 'o_' + Math.random().toString(36).substr(2, 9),
         partner_id: order.partner_id,
         store_id: order.partner_id,
+        city_id: snapshot.city_id || order.city_id || null,
+        franchise_id: snapshot.franchise_id || order.franchise_id || null,
         customer_address: normAddress,
         delivery_address: normAddress,
         payment_type: normPaymentType,
@@ -4932,8 +4976,171 @@ export const db = {
       return { count: 1, franchiseId: activeFranchises[0].id, franchise: activeFranchises[0], franchises: activeFranchises };
     }
     return { count: activeFranchises.length, franchiseId: null, franchise: null, franchises: activeFranchises };
+  },
+
+  async resolveCityAndFranchiseSnapshot(params: CityFranchiseSnapshotParams): Promise<CityFranchiseSnapshotResult> {
+    return resolveCityAndFranchiseSnapshot(params);
   }
 };
+
+export interface CityFranchiseSnapshotParams {
+  partner_id?: string | null;
+  city_id?: string | null;
+  franchise_id?: string | null;
+  city?: string | null;
+  province?: string | null;
+  district?: string | null;
+  pickup_zone?: string | null;
+  delivery_zone?: string | null;
+  pickup_address?: string | null;
+  delivery_address?: string | null;
+  address?: string | null;
+}
+
+export interface CityFranchiseSnapshotResult {
+  city_id: string | null;
+  franchise_id: string | null;
+}
+
+export async function resolveCityAndFranchiseSnapshot(
+  params: CityFranchiseSnapshotParams
+): Promise<CityFranchiseSnapshotResult> {
+  try {
+    // 1. Partner snapshot path (Mağazadan Al / Store order / Any order with a partner)
+    if (params.partner_id) {
+      try {
+        const partner = await db.getPartnerById(params.partner_id);
+        if (partner) {
+          let snapCityId = partner.city_id || null;
+          let snapFranchiseId = partner.franchise_id || null;
+
+          // If partner has no explicit city_id, try partner city text or address
+          if (!snapCityId && (partner.city || partner.address)) {
+            const cities = await db.getCities();
+            const pCityLower = (partner.city || '').trim().toLowerCase();
+            const matched = cities.find(c =>
+              c.name.toLowerCase() === pCityLower ||
+              (partner.address && partner.address.toLowerCase().includes(c.name.toLowerCase()))
+            );
+            if (matched) snapCityId = matched.id;
+          }
+
+          if (snapCityId) {
+            if (!snapFranchiseId) {
+              const res = await db.resolveFranchiseForCity(snapCityId);
+              snapFranchiseId = res.franchiseId;
+            } else {
+              // Verify franchise integrity: ensure franchise belongs to this city
+              const cityFranchises = await db.getFranchisesByCity(snapCityId);
+              const isValid = cityFranchises.some(f => f.id === snapFranchiseId);
+              if (!isValid) {
+                const res = await db.resolveFranchiseForCity(snapCityId);
+                snapFranchiseId = res.franchiseId;
+              }
+            }
+            return { city_id: snapCityId, franchise_id: snapFranchiseId };
+          }
+        }
+      } catch (pErr) {
+        console.warn('[Snapshot] Error resolving partner for snapshot:', pErr);
+      }
+    }
+
+    // 2. Direct city_id provided path
+    if (params.city_id) {
+      const snapCityId = params.city_id;
+      let snapFranchiseId = params.franchise_id || null;
+      if (!snapFranchiseId) {
+        const res = await db.resolveFranchiseForCity(snapCityId);
+        snapFranchiseId = res.franchiseId;
+      } else {
+        const cityFranchises = await db.getFranchisesByCity(snapCityId);
+        const isValid = cityFranchises.some(f => f.id === snapFranchiseId);
+        if (!isValid) {
+          const res = await db.resolveFranchiseForCity(snapCityId);
+          snapFranchiseId = res.franchiseId;
+        }
+      }
+      return { city_id: snapCityId, franchise_id: snapFranchiseId };
+    }
+
+    // 3. Location / Address / Zone resolution (Hemen UĞRA & Geçerken UĞRA)
+    const cities = await db.getCities();
+    const franchises = await db.getFranchises();
+
+    const textTokens = [
+      params.city,
+      params.province,
+      params.district,
+      params.pickup_zone,
+      params.delivery_zone,
+      params.pickup_address,
+      params.delivery_address,
+      params.address
+    ].filter(Boolean) as string[];
+
+    if (textTokens.length > 0) {
+      // 3a. Direct City Name matching
+      for (const city of cities) {
+        const cNameLower = city.name.trim().toLowerCase();
+        for (const token of textTokens) {
+          const tLower = token.trim().toLowerCase();
+          if (
+            tLower === cNameLower ||
+            tLower.includes(cNameLower) ||
+            (token.length < 50 && cNameLower.includes(tLower) && tLower.length >= 4)
+          ) {
+            const snapCityId = city.id;
+            const res = await db.resolveFranchiseForCity(snapCityId);
+            return { city_id: snapCityId, franchise_id: res.franchiseId };
+          }
+        }
+      }
+
+      // 3b. District to Franchise / City matching
+      for (const franchise of franchises) {
+        const districts = franchise.districts_covered || [];
+        for (const district of districts) {
+          const dLower = district.trim().toLowerCase();
+          for (const token of textTokens) {
+            const tLower = token.trim().toLowerCase();
+            if (tLower === dLower || tLower.includes(dLower) || dLower.includes(tLower)) {
+              const snapCityId = franchise.city_id;
+              const res = await db.resolveFranchiseForCity(snapCityId);
+              return { city_id: snapCityId, franchise_id: res.franchiseId };
+            }
+          }
+        }
+      }
+
+      // 3c. Check standard supported districts (Adapazarı, Serdivan, Erenler, etc. -> Sakarya plate 54)
+      const sakaryaKeywords = [
+        'adapazarı', 'adapazari', 'serdivan', 'erenler', 'arifiye', 'sapanca',
+        'hendek', 'akyazı', 'akyazi', 'geyve', 'karasu', 'ferizli', 'pamukova',
+        'kocaali', 'kaynarca', 'söğütlü', 'sogutlu', 'taraklı', 'tarakli', 'sakarya'
+      ];
+      const hasSakaryaMatch = textTokens.some(token => {
+        const tLower = token.trim().toLowerCase();
+        return sakaryaKeywords.some(kw => tLower.includes(kw));
+      });
+
+      if (hasSakaryaMatch) {
+        const sakaryaCity = cities.find(c => c.name.toLowerCase() === 'sakarya' || c.plate_code === 54);
+        if (sakaryaCity) {
+          const snapCityId = sakaryaCity.id;
+          const res = await db.resolveFranchiseForCity(snapCityId);
+          return { city_id: snapCityId, franchise_id: res.franchiseId };
+        }
+      }
+    }
+
+    // 4. Default / Fallback: Null values when city is not reliably known
+    return { city_id: null, franchise_id: null };
+  } catch (err) {
+    console.warn('[Snapshot] resolveCityAndFranchiseSnapshot error:', err);
+    return { city_id: null, franchise_id: null };
+  }
+}
 
 export async function resolveFranchiseForCity(cityId: string): Promise<{
   count: number;
